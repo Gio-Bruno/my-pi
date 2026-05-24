@@ -69,6 +69,7 @@ keybind = ctrl+shift+r=prompt_surface_title
 keybind = cmd+arrow_left=text:\x01
 keybind = cmd+arrow_right=text:\x05
 keybind = shift+enter=csi:13;2u
+keybind = alt+backspace=text:\x17
 keybind = cmd+backspace=text:\x15
 keybind = cmd+shift+backspace=text:\x15\x0b
 
