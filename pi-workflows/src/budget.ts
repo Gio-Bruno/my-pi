@@ -46,25 +46,49 @@ export class DefaultBudgetTracker implements BudgetTracker {
   }
 
   throwIfExceeded(): void {
-    const { maxCostUsd, maxTokens, timeoutMs } = this.config;
+    throwIfUsageExceeded(this.config, this.currentUsage, this.startedAt);
+  }
+}
 
-    if (maxCostUsd !== undefined && this.currentUsage.costUsd > maxCostUsd) {
-      throw new WorkflowBudgetExceededError(
-        `Workflow budget exceeded: cost $${this.currentUsage.costUsd.toFixed(4)} > $${maxCostUsd.toFixed(4)}`,
-      );
-    }
+export class ScopedBudgetTracker implements BudgetTracker {
+  private readonly startedAt = Date.now();
+  private currentUsage = emptyUsage();
 
-    if (maxTokens !== undefined && this.currentUsage.totalTokens > maxTokens) {
-      throw new WorkflowBudgetExceededError(
-        `Workflow budget exceeded: tokens ${this.currentUsage.totalTokens} > ${maxTokens}`,
-      );
-    }
+  constructor(
+    private readonly parent: BudgetTracker,
+    readonly config: WorkflowBudgetConfig = {},
+  ) {}
 
-    if (timeoutMs !== undefined && Date.now() - this.startedAt > timeoutMs) {
-      throw new WorkflowBudgetExceededError(
-        `Workflow budget exceeded: elapsed ${Date.now() - this.startedAt}ms > ${timeoutMs}ms`,
-      );
-    }
+  get usage(): UsageStats {
+    return { ...this.currentUsage };
+  }
+
+  addUsage(usage: UsageStats): void {
+    this.currentUsage = addUsage(this.currentUsage, usage);
+    this.parent.addUsage(usage);
+  }
+
+  throwIfExceeded(): void {
+    throwIfUsageExceeded(this.config, this.currentUsage, this.startedAt);
+    this.parent.throwIfExceeded();
+  }
+}
+
+function throwIfUsageExceeded(config: WorkflowBudgetConfig, usage: UsageStats, startedAt: number): void {
+  const { maxCostUsd, maxTokens, timeoutMs } = config;
+
+  if (maxCostUsd !== undefined && usage.costUsd > maxCostUsd) {
+    throw new WorkflowBudgetExceededError(
+      `Workflow budget exceeded: cost $${usage.costUsd.toFixed(4)} > $${maxCostUsd.toFixed(4)}`,
+    );
+  }
+
+  if (maxTokens !== undefined && usage.totalTokens > maxTokens) {
+    throw new WorkflowBudgetExceededError(`Workflow budget exceeded: tokens ${usage.totalTokens} > ${maxTokens}`);
+  }
+
+  if (timeoutMs !== undefined && Date.now() - startedAt > timeoutMs) {
+    throw new WorkflowBudgetExceededError(`Workflow budget exceeded: elapsed ${Date.now() - startedAt}ms > ${timeoutMs}ms`);
   }
 }
 

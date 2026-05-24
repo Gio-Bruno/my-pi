@@ -9,7 +9,7 @@ interface Stage<TIn = unknown, TOut = unknown> {
 
 export class DefaultPipelineBuilder<TInput, TCurrent> implements PipelineBuilder<TInput, TCurrent> {
   constructor(
-    private readonly name: string,
+    private readonly name: string | (() => string),
     private readonly items: readonly TInput[],
     private readonly logger: WorkflowLogger,
     private readonly stages: Stage[] = [],
@@ -38,10 +38,11 @@ export class DefaultPipelineBuilder<TInput, TCurrent> implements PipelineBuilder
   }
 
   async run(): Promise<TCurrent[]> {
-    this.logger.stepStart?.("pipeline", this.name);
+    const name = this.label();
+    this.logger.stepStart?.("pipeline", name);
 
     if (this.stages.length === 0) {
-      this.logger.stepEnd?.("pipeline", this.name);
+      this.logger.stepEnd?.("pipeline", name);
       return [...this.items] as unknown as TCurrent[];
     }
 
@@ -61,7 +62,11 @@ export class DefaultPipelineBuilder<TInput, TCurrent> implements PipelineBuilder
       }),
     );
 
-    this.logger.stepEnd?.("pipeline", this.name);
+    this.logger.stepEnd?.("pipeline", name);
     return results;
+  }
+
+  private label(): string {
+    return typeof this.name === "function" ? this.name() : this.name;
   }
 }

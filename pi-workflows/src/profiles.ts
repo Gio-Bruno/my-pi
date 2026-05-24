@@ -11,7 +11,15 @@ import {
   SettingsManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { InlineAgentProfile, OutputFormat, PiProfileConfig, ProfileRef, ThinkingLevel } from "./types.js";
+import type {
+  AgentPresetOptions,
+  InlineAgentConfig,
+  InlineAgentProfile,
+  OutputFormat,
+  PiProfileConfig,
+  ProfileRef,
+  ThinkingLevel,
+} from "./types.js";
 
 const DEFAULT_BUILTIN_TOOLS = ["read", "write", "edit", "bash"];
 const EXTENSIONS = new Set([".ts", ".js", ".mjs", ".cjs"]);
@@ -41,8 +49,50 @@ export interface CreateWorkflowAgentSessionOptions<T> {
   output: OutputFormat<T>;
 }
 
-export function inlineProfile(config: Omit<InlineAgentProfile, "kind">): InlineAgentProfile {
+export function inlineProfile(config: InlineAgentConfig): InlineAgentProfile {
   return { kind: "inline", ...config };
+}
+
+export function profile(name: string): string {
+  validateProfileName(name);
+  return name;
+}
+
+export function inlineAgent(config: InlineAgentConfig): InlineAgentProfile {
+  return inlineProfile(config);
+}
+
+export function readOnlyAgent(instructions = "Read files and answer concisely. Do not edit files.", options: AgentPresetOptions = {}): InlineAgentProfile {
+  return presetAgent({
+    name: "read-only",
+    tools: ["read", "grep", "find", "ls"],
+    thinkingLevel: "low",
+    ...options,
+    instructions: joinInstructions("Read-only agent. Do not edit files.", instructions),
+  });
+}
+
+export function codeSearchAgent(
+  instructions = "Search the codebase and answer with minimal tokens and strongest evidence.",
+  options: AgentPresetOptions = {},
+): InlineAgentProfile {
+  return presetAgent({
+    name: "code-search",
+    tools: ["read", "grep", "find", "ls", "bash"],
+    thinkingLevel: "low",
+    ...options,
+    instructions: joinInstructions("Code search agent. Prefer read-only inspection and concise evidence.", instructions),
+  });
+}
+
+export function editAgent(instructions = "Make minimal safe edits.", options: AgentPresetOptions = {}): InlineAgentProfile {
+  return presetAgent({
+    name: "editor",
+    tools: ["read", "grep", "find", "ls", "edit", "write", "bash"],
+    thinkingLevel: "medium",
+    ...options,
+    instructions: joinInstructions("Editing agent. Keep changes minimal and safe.", instructions),
+  });
 }
 
 export function isInlineProfile(value: unknown): value is InlineAgentProfile {
@@ -239,6 +289,16 @@ export async function createWorkflowAgentSession<T>({
       disableSystemPromptDiscovery: false,
     } satisfies LoadedProfile,
   };
+}
+
+function presetAgent(config: InlineAgentConfig): InlineAgentProfile {
+  return inlineProfile(config);
+}
+
+function joinInstructions(base: string, instructions: string): string {
+  const trimmed = instructions.trim();
+  if (!trimmed || trimmed === base) return base;
+  return `${base}\n\n${trimmed}`;
 }
 
 function normalizeInlineAppendSystemPrompt(profile: InlineAgentProfile): string[] {

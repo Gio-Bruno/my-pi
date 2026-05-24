@@ -1,4 +1,4 @@
-import type { PhaseLog, WorkflowLogger } from "./types.js";
+import type { WorkflowLogger } from "./types.js";
 
 function now() {
   return new Date().toISOString().slice(11, 19);
@@ -39,29 +39,5 @@ export class ConsoleWorkflowLogger implements WorkflowLogger {
 
   stepEnd(kind: string, name: string): void {
     console.log(format(kind, `✓ ${name}`));
-  }
-}
-
-export class LoggerPhaseLog implements PhaseLog {
-  constructor(private readonly logger: WorkflowLogger) {}
-
-  start(phase: string, message?: string): void {
-    this.logger.start?.(phase, message);
-  }
-
-  info(phaseOrMessage: string, message?: string): void {
-    this.logger.info?.(phaseOrMessage, message);
-  }
-
-  success(phaseOrMessage: string, message?: string): void {
-    this.logger.success?.(phaseOrMessage, message);
-  }
-
-  warn(phaseOrMessage: string, message?: string): void {
-    this.logger.warn?.(phaseOrMessage, message);
-  }
-
-  error(phaseOrMessage: string, message?: string): void {
-    this.logger.error?.(phaseOrMessage, message);
   }
 }

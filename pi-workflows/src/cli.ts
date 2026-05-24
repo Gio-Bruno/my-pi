@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { runWorkflow } from "./workflow.js";
+import { run } from "./workflow.js";
 import type { Workflow } from "./types.js";
 
 interface CliArgs {
@@ -21,10 +21,10 @@ async function main() {
   const workflowModule = await import(pathToFileURL(resolve(args.workflowPath)).href);
   const workflow = (workflowModule.default ?? workflowModule.workflow) as Workflow | undefined;
   if (!workflow?.run || !workflow.profiles || !workflow.meta) {
-    throw new Error(`Workflow module must export default defineWorkflow({...})`);
+    throw new Error(`Workflow module must export default workflow(name, options)`);
   }
 
-  const result = await runWorkflow(workflow, {
+  const result = await run(workflow, {
     args: args.json,
     cwd: args.cwd,
     profileRoot: args.profileRoot,

@@ -1,5 +1,4 @@
-import { pathToFileURL } from "node:url";
-import { defineWorkflow, json, runWorkflow, structured, text, type ShellResult } from "../src/index.js";
+import { compact, profile, prompt, workflow, type ShellResult } from "../src/index.js";
 import { Type } from "typebox";
 
 const TriageSchema = Type.Object({
@@ -23,21 +22,16 @@ interface Args {
   maxLoops?: number;
 }
 
-const workflow = defineWorkflow({
-  meta: {
-    name: "Fix failing tests",
-    description: "Run tests, triage failures, fix, validate, and review the final diff.",
-    phases: ["test", "triage", "fix", "validate", "review"],
-  },
-  profiles: {
-    scout: "test-scout",
-    fixer: "test-fixer",
-    reviewer: "test-reviewer",
-  },
-  defaults: {
-    maxIterations: 2,
-    concurrency: 3,
-    budget: { maxCostUsd: 3, maxTokens: 300_000 },
+export default workflow("Fix failing tests", {
+  description: "Run tests, triage failures, fix, validate, and review the final diff.",
+  phases: ["test", "triage", "fix", "validate", "review"],
+  maxIterations: 2,
+  concurrency: 3,
+  budget: { maxCostUsd: 3, maxTokens: 300_000 },
+  agents: {
+    scout: profile("test-scout"),
+    fixer: profile("test-fixer"),
+    reviewer: profile("test-reviewer"),
   },
 
   async run($, args: Args = {}) {
@@ -46,70 +40,66 @@ const workflow = defineWorkflow({
     let triage: unknown;
 
     for (let loop = 1; loop <= maxLoops; loop++) {
-      $.phaseLog.start("test", `run ${loop}/${maxLoops}`);
-      lastTest = await $.sh("unit tests", "npm test -- --runInBand");
-      if (lastTest.ok) {
-        $.phaseLog.success("test", "tests passed");
-        break;
-      }
+      lastTest = await $.phase("test", () => $.sh(`unit tests ${loop}/${maxLoops}`, "npm test -- --runInBand"));
+      if (lastTest.ok) break;
 
       const failure = lastTest.output.slice(-40_000);
 
-      $.phaseLog.start("triage", "parse and scout failures");
-      const parsed = await $.run("parse failure output", () => parseFailureOutput(failure));
+      const parsed = await $.phase("triage", () => $.run("parse failure output", () => parseFailureOutput(failure)));
 
-      triage = await $.agent("scout", makeTriagePrompt(failure, parsed), {
-        output: json(TriageSchema),
-      });
+      triage = await $.phase("triage", () => $.json("scout", TriageSchema, makeTriagePrompt(failure, parsed)));
 
       // Pipeline example: each failed file is analyzed by scout, then reviewed by reviewer
       // as soon as its scout result is ready. Keep this read-only.
       if (parsed.failedFiles.length > 0) {
-        await $.pipeline("read-only per-file scout/review", parsed.failedFiles.slice(0, 4))
-          .stage(
-            "scout file",
-            (file) => $.agent("scout", `Analyze likely test failure causes in ${file}.`, { output: json(FindingSchema) }),
-            { concurrency: 3 },
-          )
-          .stage(
-            "review finding",
-            (finding) =>
-              $.agent("reviewer", `Review this finding for plausibility:\n${JSON.stringify(finding, null, 2)}`, {
-                output: text(),
-              }),
-            { concurrency: 2 },
-          )
-          .run();
+        await $.phase("triage", () =>
+          $.pipeline("read-only per-file scout/review", parsed.failedFiles.slice(0, 4))
+            .stage(
+              "scout file",
+              (file) => $.json("scout", FindingSchema, `Analyze likely test failure causes in ${file}.`),
+              { concurrency: 3 },
+            )
+            .stage(
+              "review finding",
+              (finding) =>
+                $.text(
+                  "reviewer",
+                  prompt`
+                    Review this finding for plausibility:
+                    ${compact(finding)}
+                  `,
+                ),
+              { concurrency: 2 },
+            )
+            .run(),
+        );
       }
 
-      $.phaseLog.start("fix", "apply minimal fix");
-      await $.agent("fixer", makeFixPrompt(failure, triage), { output: text() });
+      await $.phase("fix", () => $.text("fixer", makeFixPrompt(failure, triage)));
       $.budget.throwIfExceeded();
     }
 
-    $.phaseLog.start("validate", "parallel checks");
-    const checks = await $.parallel(
-      "validation",
-      {
-        tests: () => $.sh("unit tests", "npm test -- --runInBand"),
-        types: () => $.sh("typecheck", "npm run typecheck"),
-      },
-      { concurrency: 2 },
+    const checks = await $.phase("validate", () =>
+      $.parallel(
+        "validation",
+        {
+          tests: () => $.sh("unit tests", "npm test -- --runInBand"),
+          types: () => $.sh("typecheck", "npm run typecheck"),
+        },
+        { concurrency: 2 },
+      ),
     );
 
     if (!checks.tests.ok) {
       throw new Error(`Tests still fail after ${maxLoops} loop(s).\n${checks.tests.output.slice(-4000)}`);
     }
 
-    $.phaseLog.start("review", "final diff review");
-    const diff = await $.sh("git diff", "git diff");
-    return $.agent("reviewer", makeReviewPrompt(diff.output, checks), {
-      output: structured(ReviewSchema),
+    return $.phase("review", async () => {
+      const diff = await $.sh("git diff", "git diff");
+      return $.structured("reviewer", ReviewSchema, makeReviewPrompt(diff.output, checks));
     });
   },
 });
-
-export default workflow;
 
 function parseFailureOutput(output: string) {
   const failedFiles = Array.from(
@@ -146,7 +136,7 @@ Rules:
 - Do not refactor unrelated code.
 
 Triage:
-${JSON.stringify(triage, null, 2)}
+${compact(triage)}
 
 Failure output:
 ${failure}`;
@@ -164,8 +154,4 @@ ${Object.entries(checks)
 
 Diff:
 ${diff}`;
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await runWorkflow(workflow, { args: {} });
 }

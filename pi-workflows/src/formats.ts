@@ -1,5 +1,5 @@
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import type { Static, TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "typebox";
 import { Check, Errors } from "typebox/value";
 import type { OutputFormat, OutputRuntime } from "./types.js";
 
@@ -67,6 +67,43 @@ export function structured<const S extends TSchema>(schema: S): OutputFormat<Sta
   };
 }
 
+export const format = {
+  text,
+  json,
+  structured,
+};
+
+export function prompt(strings: TemplateStringsArray, ...values: unknown[]): string {
+  let rendered = "";
+  for (let i = 0; i < strings.length; i++) {
+    rendered += strings[i];
+    if (i < values.length) rendered += String(values[i]);
+  }
+  return dedent(rendered);
+}
+
+export function compact(value: unknown): string {
+  const json = JSON.stringify(stable(value));
+  return json === undefined ? String(value) : json;
+}
+
+export const schema = {
+  object: Type.Object,
+  array: Type.Array,
+  optional: Type.Optional,
+  literal: Type.Literal,
+  union: Type.Union,
+  string(descriptionOrOptions?: string | Parameters<typeof Type.String>[0]) {
+    return Type.String(typeof descriptionOrOptions === "string" ? { description: descriptionOrOptions } : descriptionOrOptions);
+  },
+  number(descriptionOrOptions?: string | Parameters<typeof Type.Number>[0]) {
+    return Type.Number(typeof descriptionOrOptions === "string" ? { description: descriptionOrOptions } : descriptionOrOptions);
+  },
+  boolean(descriptionOrOptions?: string | Parameters<typeof Type.Boolean>[0]) {
+    return Type.Boolean(typeof descriptionOrOptions === "string" ? { description: descriptionOrOptions } : descriptionOrOptions);
+  },
+};
+
 export function extractJson(rawText: string): string {
   const trimmed = rawText.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -97,4 +134,27 @@ function validateSchema(schema: TSchema | undefined, value: unknown, label: stri
     })
     .join("; ");
   throw new Error(`Invalid ${label}: ${errors}`);
+}
+
+function dedent(value: string): string {
+  const lines = value.replace(/\r\n/g, "\n").split("\n");
+  while (lines.length > 0 && lines[0].trim() === "") lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
+
+  const indents = lines.filter((line) => line.trim() !== "").map((line) => line.match(/^\s*/)?.[0].length ?? 0);
+  const minIndent = indents.length ? Math.min(...indents) : 0;
+  return lines.map((line) => line.slice(Math.min(minIndent, line.length))).join("\n");
+}
+
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable);
+  if (!value || typeof value !== "object") return value;
+
+  const object = value as Record<string, unknown>;
+  return Object.keys(object)
+    .sort()
+    .reduce<Record<string, unknown>>((result, key) => {
+      result[key] = stable(object[key]);
+      return result;
+    }, {});
 }

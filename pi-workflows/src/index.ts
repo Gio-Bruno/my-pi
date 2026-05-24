@@ -1,17 +1,31 @@
-export { defineWorkflow, runWorkflow } from "./workflow.js";
-export { text, json, structured, extractJson, STRUCTURED_TOOL_NAME } from "./formats.js";
-export { resolveProfileRoot, loadProfile, inlineProfile, isInlineProfile } from "./profiles.js";
-export { DefaultBudgetTracker, WorkflowBudgetExceededError } from "./budget.js";
+export { workflow, run } from "./workflow.js";
+export { format, prompt, compact, schema, extractJson, STRUCTURED_TOOL_NAME } from "./formats.js";
+export { profile, inlineAgent, readOnlyAgent, codeSearchAgent, editAgent, isInlineProfile, resolveProfileRoot, loadProfile } from "./profiles.js";
+export { DefaultBudgetTracker, ScopedBudgetTracker, WorkflowBudgetExceededError } from "./budget.js";
+export { defaultHumanProvider, HumanInputUnavailableError } from "./human.js";
 export type {
   AgentOptions,
+  AgentPresetOptions,
   AgentResult,
   AgentTarget,
   BudgetTracker,
+  ChildWorkflowOptions,
+  HumanApproval,
+  HumanApproveOptions,
+  HumanApproveRequest,
+  HumanAskOptions,
+  HumanAskRequest,
+  HumanChooseOptions,
+  HumanChooseRequest,
+  HumanConfirmOptions,
+  HumanConfirmRequest,
+  HumanProvider,
+  HumanPromptOptions,
+  InlineAgentConfig,
   InlineAgentProfile,
   ModelRef,
   OutputFormat,
   ParallelOptions,
-  PhaseLog,
   PiProfileConfig,
   PipelineBuilder,
   PipelineStageOptions,
@@ -29,4 +43,5 @@ export type {
   WorkflowDefaults,
   WorkflowLogger,
   WorkflowMeta,
+  WorkflowOptions,
 } from "./types.js";

@@ -14,7 +14,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "workflow": "tsx src/cli.ts",
-    "example:fix-tests": "tsx examples/fix-tests.workflow.ts"
+    "example:fix-tests": "tsx src/cli.ts examples/fix-tests.workflow.ts"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.75.5",
