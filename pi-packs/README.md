@@ -75,3 +75,4 @@ When a pack adds package dependencies, the wrapper runs `npm install` in the tar
 - `rtk` - RTK command rewriting/token-saving extension hook.
 - `firecrawl` - Firecrawl MCP server exposed as direct scrape/search/map/crawl/extract tools. Requires `FIRECRAWL_API_KEY` in the local environment.
 - `plannotator` - Plannotator Pi package for visual plan/code review and annotations. Upstream: https://github.com/backnotprop/plannotator
+- `impeccable` - Impeccable frontend design skill and CLI. Upstream: https://github.com/pbakaus/impeccable

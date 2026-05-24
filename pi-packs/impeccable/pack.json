@@ -1,0 +1,14 @@
+{
+  "description": "Impeccable frontend design skill and CLI. Upstream: https://github.com/pbakaus/impeccable",
+  "sharedFiles": {
+    "skills/impeccable": "skills/impeccable",
+    "extensions/impeccable-command.ts": "extensions/impeccable-command.ts",
+    "prompts/impeccable.md": "prompts/impeccable.md"
+  },
+  "settings": {
+    "enableSkillCommands": true
+  },
+  "dependencies": {
+    "impeccable": "github:pbakaus/impeccable"
+  }
+}
