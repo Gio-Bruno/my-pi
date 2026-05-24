@@ -34,9 +34,20 @@ Create another profile with:
 pi create <profile-name>
 ```
 
+Profiles can be used in two ways:
+
+```txt
+CLI wrapper:     pi <profile-name> -p "task"
+SDK workflows:  ../pi-workflows workflows that reference this profile by name
+```
+
 Create a profile by pulling reusable resources from packs:
 
 ```sh
 pi create my-mcp --tools "" --pack mcp-adapter
 pi create my-agent --pack mcp-adapter --pack team-prompts
 ```
+
+For deterministic SDK workflows, see `../pi-workflows/`. Workflows reuse the
+same `config.json`, `APPEND_SYSTEM.md`, tools, extensions, skills, prompts, and
+the active profile root chosen by `pi agent-path` / `PI_AGENTS_HOME`.

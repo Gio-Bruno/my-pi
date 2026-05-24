@@ -10,6 +10,7 @@ This repository is meant to be cloneable on any machine, including work/corporat
 - `my-pi-agents/` - portable Pi profile root used by the wrapper.
 - `pi-packs/` - reusable profile packs for composing new agents.
 - `pi-shared/` - shared source library that packs copy extensions, skills, prompts, themes, and config snippets from.
+- `pi-workflows/` - reusable TypeScript workflow kit for deterministic Pi SDK profile-agent scripts.
 - `my-ghostty-configs/` - reusable Ghostty config installer/snippets.
 - `scripts/audit-secrets.sh` - quick pre-commit safety check.
 

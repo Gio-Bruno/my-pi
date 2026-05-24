@@ -54,6 +54,13 @@ pi researcher
 pi researcher -p "Inspect this repo"
 ```
 
+Use profiles from reusable SDK workflows:
+
+```sh
+cd ../pi-workflows
+npm run workflow -- examples/fix-tests.workflow.ts --json '{"maxLoops":2}'
+```
+
 List managed profiles:
 
 ```sh
@@ -245,6 +252,17 @@ model registry state. Both are ignored by the profile `.gitignore`.
 
 `APPEND_SYSTEM.md` is created empty by default. Put profile-specific appended
 system instructions there.
+
+SDK workflows in `../pi-workflows/` read the same profile layout and config. For
+SDK-friendly model configuration, prefer explicit fields instead of CLI-only
+`extraArgs`:
+
+```json
+{
+  "model": { "provider": "anthropic", "id": "claude-sonnet-4-5" },
+  "thinkingLevel": "high"
+}
+```
 
 To replace Pi's system prompt with a custom file, add `systemPrompt` to
 `config.json`. This is intentionally not included in the default template:
