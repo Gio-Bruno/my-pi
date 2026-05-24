@@ -8,6 +8,8 @@ This repository is meant to be cloneable on any machine, including work/corporat
 
 - `custom-pi-agents/` - `pi` wrapper that runs isolated named Pi profiles.
 - `my-pi-agents/` - portable Pi profile root used by the wrapper.
+- `pi-packs/` - reusable profile packs for composing new agents.
+- `pi-shared/` - shared source library that packs copy extensions, skills, prompts, themes, and config snippets from.
 - `my-ghostty-configs/` - reusable Ghostty config installer/snippets.
 - `scripts/audit-secrets.sh` - quick pre-commit safety check.
 
@@ -36,6 +38,25 @@ pi mr-default
 ```
 
 `PI_AGENTS_HOME` overrides the stored `pi agent-path`. If you set `PI_AGENTS_HOME`, unset it or point it at this repo's `my-pi-agents/`.
+
+## Reusable profile packs
+
+Create agents by pulling resources from one or more packs:
+
+```sh
+pi packs
+pi create my-mcp --tools "" --pack mcp-adapter
+pi create my-agent --pack mcp-adapter --pack team-prompts --pack review-skills
+```
+
+Add packs to an existing agent:
+
+```sh
+pi apply-pack existing-agent mcp-adapter team-prompts
+```
+
+Packs are copy/apply templates. Shared resources live in `pi-shared/`, but each
+agent gets its own copy under its profile directory.
 
 ## Credentials policy
 

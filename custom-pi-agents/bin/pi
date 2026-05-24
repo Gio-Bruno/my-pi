@@ -5,14 +5,23 @@ DEFAULT_AGENT_DIR="${PI_DEFAULT_AGENT_DIR:-$HOME/.pi/agent}"
 DEFAULT_BUILTIN_TOOLS="read,write,edit,bash"
 WRAPPER_CONFIG_DIR="${PI_WRAPPER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/custom-pi-agents}"
 AGENT_PATH_FILE="$WRAPPER_CONFIG_DIR/agent-path"
+WRAPPER_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+DEFAULT_AGENT_PACKS_HOME="$(cd "$WRAPPER_BIN_DIR/../.." && pwd -P)/pi-packs"
+DEFAULT_SHARED_HOME="$(cd "$WRAPPER_BIN_DIR/../.." && pwd -P)/pi-shared"
+AGENT_PACKS_HOME="${PI_AGENT_PACKS_HOME:-$DEFAULT_AGENT_PACKS_HOME}"
+PI_SHARED_HOME="${PI_SHARED_HOME:-$DEFAULT_SHARED_HOME}"
 
 usage() {
   cat <<'USAGE'
 Pi profile wrapper
 
 Commands:
-  pi create <agent-name> [--tools <csv>]   Create an isolated Pi profile
+  pi create <agent-name> [--tools <csv>] [--pack <name>]...
+                                           Create an isolated Pi profile
                                            --tools sets builtinTools in config.json
+                                           --pack applies a reusable profile pack
+  pi apply-pack <agent-name> <pack-name>... Add reusable packs to an existing profile
+  pi packs                                List available reusable profile packs
   pi agent-path [path|--clear]             Show, set, or clear the profile root
   pi agents                                List managed Pi profiles
   pi run <agent-name> [pi args...]         Run a managed profile explicitly
@@ -23,6 +32,8 @@ Commands:
 Environment:
   PI_AGENTS_HOME       Profile root. Default: ~/.pi-agents
                        Overrides a stored pi agent-path value.
+  PI_AGENT_PACKS_HOME  Reusable profile pack root. Default: <repo>/pi-packs
+  PI_SHARED_HOME       Shared resource root used by packs. Default: <repo>/pi-shared
   PI_REAL_BIN          Real Pi binary. Default: first non-wrapper pi in PATH,
                        then /opt/homebrew/bin/pi, then /usr/local/bin/pi.
   PI_DEFAULT_AGENT_DIR Default Pi profile copied/linked at create time.
@@ -284,9 +295,404 @@ profile_dir() {
   printf '%s/%s\n' "$(profile_root)" "$name"
 }
 
+pack_root() {
+  printf '%s\n' "$AGENT_PACKS_HOME"
+}
+
+pack_dir() {
+  local name="$1"
+  printf '%s/%s\n' "$(pack_root)" "$name"
+}
+
+shared_root() {
+  printf '%s\n' "$PI_SHARED_HOME"
+}
+
+validate_relative_path() {
+  local rel="$1"
+  local label="${2:-path}"
+  case "$rel" in
+    ""|/*|../*|*/../*)
+      die "invalid $label: $rel"
+      ;;
+  esac
+}
+
+copy_single_resource_file() {
+  local src="$1"
+  local dest="$2"
+  local label="${3:-resource}"
+
+  mkdir -p "$(dirname "$dest")"
+
+  if [[ -e "$dest" || -L "$dest" ]]; then
+    if [[ -f "$src" && -f "$dest" ]] && cmp -s "$src" "$dest"; then
+      return 0
+    fi
+    die "$label would overwrite existing file: $dest"
+  fi
+
+  cp -R "$src" "$dest"
+}
+
+copy_resource_tree() {
+  local src_root="$1"
+  local dest_root="$2"
+  local label="${3:-resource}"
+
+  [[ -d "$src_root" ]] || die "$label source directory does not exist: $src_root"
+  mkdir -p "$dest_root"
+
+  local rel
+  local src
+  local dest
+  while IFS= read -r -d '' rel; do
+    rel="${rel#./}"
+    validate_relative_path "$rel" "$label path"
+    src="$src_root/$rel"
+    dest="$dest_root/$rel"
+    copy_single_resource_file "$src" "$dest" "$label"
+  done < <(cd "$src_root" && find . \( -type f -o -type l \) -print0)
+}
+
+copy_resource_path() {
+  local src="$1"
+  local dest="$2"
+  local label="${3:-resource}"
+
+  [[ -e "$src" || -L "$src" ]] || die "$label source does not exist: $src"
+
+  if [[ -d "$src" && ! -L "$src" ]]; then
+    copy_resource_tree "$src" "$dest" "$label"
+  else
+    copy_single_resource_file "$src" "$dest" "$label"
+  fi
+}
+
+copy_pack_files() {
+  local profile_dir="$1"
+  local pack_dir="$2"
+  local files_dir="$pack_dir/files"
+
+  [[ -d "$files_dir" ]] || return 0
+
+  copy_resource_tree "$files_dir" "$profile_dir" "pack file"
+}
+
+copy_pack_shared_files() {
+  local profile_dir="$1"
+  local manifest_path="$2"
+
+  command -v node >/dev/null 2>&1 || die "node is required to apply profile packs"
+
+  local dest_rel
+  local src_rel
+  while IFS= read -r -d '' dest_rel && IFS= read -r -d '' src_rel; do
+    validate_relative_path "$dest_rel" "shared destination path"
+    validate_relative_path "$src_rel" "shared source path"
+    copy_resource_path "$(shared_root)/$src_rel" "$profile_dir/$dest_rel" "shared file"
+  done < <(node - "$manifest_path" <<'NODE'
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const sharedFiles = manifest.sharedFiles ?? {};
+
+if (Array.isArray(sharedFiles)) {
+  for (const item of sharedFiles) {
+    if (typeof item !== "string") {
+      console.error("pack.sharedFiles array entries must be strings");
+      process.exit(1);
+    }
+    process.stdout.write(`${item}\0${item}\0`);
+  }
+} else if (sharedFiles && typeof sharedFiles === "object") {
+  for (const [dest, src] of Object.entries(sharedFiles)) {
+    if (typeof src !== "string") {
+      console.error("pack.sharedFiles object values must be strings");
+      process.exit(1);
+    }
+    process.stdout.write(`${dest}\0${src}\0`);
+  }
+} else {
+  console.error("pack.sharedFiles must be an object or array");
+  process.exit(1);
+}
+NODE
+  )
+}
+
+merge_pack_manifest() {
+  local profile_dir="$1"
+  local profile_name="$2"
+  local manifest_path="$3"
+
+  command -v node >/dev/null 2>&1 || die "node is required to apply profile packs"
+
+  node - "$profile_dir" "$profile_name" "$manifest_path" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const [profileDir, profileName, manifestPath] = process.argv.slice(2);
+
+function readJson(file, fallback) {
+  if (!fs.existsSync(file)) return structuredClone(fallback);
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    console.error(`Invalid JSON in ${file}: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+function writeJson(file, value) {
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function stable(value) {
+  return JSON.stringify(sortValue(value));
+}
+
+function sortValue(value) {
+  if (Array.isArray(value)) return value.map(sortValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortValue(value[key])]));
+}
+
+function ensureArray(value, label) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    console.error(`${label} must be an array of strings`);
+    process.exit(1);
+  }
+  return value;
+}
+
+function mergeStringArray(target, key, additions, label) {
+  additions = ensureArray(additions, label);
+  if (additions.length === 0) return;
+  const current = ensureArray(target[key], `config.${key}`);
+  const seen = new Set(current);
+  for (const item of additions) {
+    if (!seen.has(item)) {
+      current.push(item);
+      seen.add(item);
+    }
+  }
+  target[key] = current;
+}
+
+function mergeObjectNoConflicts(target, source, label) {
+  if (source === undefined) return target;
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    console.error(`${label} must be an object`);
+    process.exit(1);
+  }
+  target = target && typeof target === "object" && !Array.isArray(target) ? target : {};
+  for (const [key, value] of Object.entries(source)) {
+    if (Object.prototype.hasOwnProperty.call(target, key) && stable(target[key]) !== stable(value)) {
+      console.error(`${label}.${key} already exists with a different value`);
+      process.exit(1);
+    }
+    target[key] = value;
+  }
+  return target;
+}
+
+function sanitizePackageName(name) {
+  const sanitized = name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[._-]+|[._-]+$/g, "");
+  return sanitized || "pi-profile";
+}
+
+const manifest = readJson(manifestPath, {});
+const configPatch = {
+  ...(manifest.config && typeof manifest.config === "object" && !Array.isArray(manifest.config) ? manifest.config : {}),
+};
+for (const key of ["builtinTools", "extensionTools", "extraArgs", "systemPrompt", "appendSystemPrompt"]) {
+  if (Object.prototype.hasOwnProperty.call(manifest, key)) {
+    configPatch[key] = manifest[key];
+  }
+}
+
+const configPath = path.join(profileDir, "config.json");
+const config = readJson(configPath, { builtinTools: [], extensionTools: [], extraArgs: [] });
+mergeStringArray(config, "builtinTools", configPatch.builtinTools, "pack.config.builtinTools");
+mergeStringArray(config, "extensionTools", configPatch.extensionTools, "pack.config.extensionTools");
+mergeStringArray(config, "extraArgs", configPatch.extraArgs, "pack.config.extraArgs");
+for (const key of ["systemPrompt", "appendSystemPrompt"]) {
+  if (Object.prototype.hasOwnProperty.call(configPatch, key)) {
+    const value = configPatch[key];
+    if (value !== null && typeof value !== "string") {
+      console.error(`pack.config.${key} must be a string or null`);
+      process.exit(1);
+    }
+    if (Object.prototype.hasOwnProperty.call(config, key) && stable(config[key]) !== stable(value)) {
+      console.error(`config.${key} already exists with a different value`);
+      process.exit(1);
+    }
+    config[key] = value;
+  }
+}
+writeJson(configPath, config);
+
+if (manifest.settings !== undefined) {
+  const settingsPath = path.join(profileDir, "settings.json");
+  const settings = readJson(settingsPath, {});
+  const mergedSettings = mergeObjectNoConflicts(settings, manifest.settings, "settings");
+  writeJson(settingsPath, mergedSettings);
+}
+
+const dependencyKeys = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
+const hasPackageData = dependencyKeys.some((key) => manifest[key] !== undefined)
+  || manifest.bundledDependencies !== undefined;
+
+if (hasPackageData) {
+  const packagePath = path.join(profileDir, "package.json");
+  const pkg = readJson(packagePath, {
+    name: `${sanitizePackageName(profileName)}-pi-profile`,
+    private: true,
+    type: "module",
+    description: `Local dependencies for the ${profileName} Pi profile.`,
+  });
+
+  if (!pkg.name) pkg.name = `${sanitizePackageName(profileName)}-pi-profile`;
+  if (pkg.private === undefined) pkg.private = true;
+  if (!pkg.type) pkg.type = "module";
+
+  for (const key of dependencyKeys) {
+    if (manifest[key] === undefined) continue;
+    pkg[key] = mergeObjectNoConflicts(pkg[key], manifest[key], `package.${key}`);
+  }
+
+  if (manifest.bundledDependencies !== undefined) {
+    const additions = ensureArray(manifest.bundledDependencies, "package.bundledDependencies");
+    const current = ensureArray(pkg.bundledDependencies, "package.bundledDependencies");
+    const seen = new Set(current);
+    for (const item of additions) {
+      if (!seen.has(item)) {
+        current.push(item);
+        seen.add(item);
+      }
+    }
+    pkg.bundledDependencies = current;
+  }
+
+  writeJson(packagePath, pkg);
+}
+
+if (manifest.mcp !== undefined) {
+  if (!manifest.mcp || typeof manifest.mcp !== "object" || Array.isArray(manifest.mcp)) {
+    console.error("pack.mcp must be an object");
+    process.exit(1);
+  }
+
+  const mcpPath = path.join(profileDir, "mcp.json");
+  const mcp = readJson(mcpPath, { settings: {}, mcpServers: {} });
+
+  if (manifest.mcp.settings !== undefined) {
+    mcp.settings = mergeObjectNoConflicts(mcp.settings, manifest.mcp.settings, "mcp.settings");
+  } else if (!mcp.settings) {
+    mcp.settings = {};
+  }
+
+  if (manifest.mcp.mcpServers !== undefined) {
+    mcp.mcpServers = mergeObjectNoConflicts(mcp.mcpServers, manifest.mcp.mcpServers, "mcp.mcpServers");
+  } else if (!mcp.mcpServers) {
+    mcp.mcpServers = {};
+  }
+
+  for (const [key, value] of Object.entries(manifest.mcp)) {
+    if (key === "settings" || key === "mcpServers") continue;
+    if (Object.prototype.hasOwnProperty.call(mcp, key) && stable(mcp[key]) !== stable(value)) {
+      console.error(`mcp.${key} already exists with a different value`);
+      process.exit(1);
+    }
+    mcp[key] = value;
+  }
+
+  writeJson(mcpPath, mcp);
+}
+NODE
+}
+
+profile_has_package_dependencies() {
+  local profile_dir="$1"
+  local package_json="$profile_dir/package.json"
+  [[ -f "$package_json" ]] || return 1
+
+  node - "$package_json" <<'NODE'
+const fs = require("node:fs");
+const pkg = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const keys = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
+process.exit(keys.some((key) => pkg[key] && Object.keys(pkg[key]).length > 0) ? 0 : 1);
+NODE
+}
+
+install_profile_packages() {
+  local profile_dir="$1"
+  profile_has_package_dependencies "$profile_dir" || return 0
+  command -v npm >/dev/null 2>&1 || die "npm is required to install profile package dependencies"
+  (cd "$profile_dir" && npm install)
+}
+
+apply_pack_to_profile() {
+  local profile_dir="$1"
+  local profile_name="$2"
+  local pack_name="$3"
+
+  validate_agent_name "$pack_name"
+
+  local pack_dir
+  pack_dir="$(pack_dir "$pack_name")"
+  [[ -f "$pack_dir/pack.json" ]] || die "profile pack '$pack_name' does not exist under $(pack_root)"
+
+  copy_pack_files "$profile_dir" "$pack_dir"
+  copy_pack_shared_files "$profile_dir" "$pack_dir/pack.json"
+  merge_pack_manifest "$profile_dir" "$profile_name" "$pack_dir/pack.json"
+  printf 'Applied profile pack: %s\n' "$pack_name"
+}
+
+list_packs() {
+  case "${1:-}" in
+    -h|--help)
+      usage
+      return
+      ;;
+    "")
+      ;;
+    *)
+      die "usage: pi packs"
+      ;;
+  esac
+
+  local root
+  root="$(pack_root)"
+
+  if [[ ! -d "$root" ]]; then
+    printf 'No profile packs found under %s\n' "$root"
+    return
+  fi
+
+  local found=0
+  local dir
+  local description
+  for dir in "$root"/*; do
+    [[ -d "$dir" && -f "$dir/pack.json" ]] || continue
+    found=1
+    description="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(p.description || "");' "$dir/pack.json")"
+    if [[ -n "$description" ]]; then
+      printf '%s - %s\n' "$(basename "$dir")" "$description"
+    else
+      printf '%s\n' "$(basename "$dir")"
+    fi
+  done
+
+  if ((found == 0)); then
+    printf 'No profile packs found under %s\n' "$root"
+  fi
+}
+
 ensure_profile_dirs() {
   local dir="$1"
-  mkdir -p "$dir/skills" "$dir/prompts" "$dir/tools" "$dir/extensions" "$dir/sessions"
+  mkdir -p "$dir/skills" "$dir/prompts" "$dir/tools" "$dir/extensions" "$dir/themes" "$dir/sessions"
 }
 
 create_profile() {
@@ -294,6 +700,8 @@ create_profile() {
   local tools="$DEFAULT_BUILTIN_TOOLS"
   local link_auth=1
   local copy_settings=1
+  local install_packages=1
+  local -a packs=()
 
   while (($#)); do
     case "$1" in
@@ -301,6 +709,17 @@ create_profile() {
         shift
         (($#)) || die "--tools requires a comma-separated value"
         tools="$1"
+        ;;
+      --pack)
+        shift
+        (($#)) || die "--pack requires a profile pack name"
+        packs+=("$1")
+        ;;
+      --install)
+        install_packages=1
+        ;;
+      --no-install)
+        install_packages=0
         ;;
       --no-auth-link)
         link_auth=0
@@ -363,8 +782,71 @@ GITIGNORE
 
   ln -s "$DEFAULT_AGENT_DIR/models.json" "$dir/models.json"
 
+  local pack
+  for pack in "${packs[@]}"; do
+    apply_pack_to_profile "$dir" "$name" "$pack"
+  done
+
+  if ((install_packages)); then
+    install_profile_packages "$dir"
+  fi
+
   printf 'Created Pi agent profile: %s\n' "$name"
   printf 'Profile directory: %s\n' "$dir"
+}
+
+apply_pack_command() {
+  local name=""
+  local install_packages=1
+  local -a packs=()
+
+  while (($#)); do
+    case "$1" in
+      --pack)
+        shift
+        (($#)) || die "--pack requires a profile pack name"
+        packs+=("$1")
+        ;;
+      --install)
+        install_packages=1
+        ;;
+      --no-install)
+        install_packages=0
+        ;;
+      -h|--help)
+        usage
+        return
+        ;;
+      -*)
+        die "unknown apply-pack option: $1"
+        ;;
+      *)
+        if [[ -z "$name" ]]; then
+          name="$1"
+        else
+          packs+=("$1")
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  [[ -n "$name" && ${#packs[@]} -gt 0 ]] || die "usage: pi apply-pack <agent-name> <pack-name>..."
+  validate_agent_name "$name"
+
+  local dir
+  dir="$(profile_dir "$name")"
+  [[ -d "$dir" ]] || die "profile '$name' does not exist; create it with: pi create $name"
+  ensure_profile_dirs "$dir"
+
+  local pack
+  for pack in "${packs[@]}"; do
+    apply_pack_to_profile "$dir" "$name" "$pack"
+  done
+
+  if ((install_packages)); then
+    install_profile_packages "$dir"
+  fi
 }
 
 list_profiles() {
@@ -441,6 +923,8 @@ run_profile() {
     --skill "$dir/skills"
     --no-prompt-templates
     --prompt-template "$dir/prompts"
+    --no-themes
+    --theme "$dir/themes"
     --no-extensions
   )
 
@@ -490,7 +974,15 @@ run_profile() {
 
   local ext
   shopt -s nullglob
-  for ext in "$dir"/extensions/*.js "$dir"/extensions/*.mjs "$dir"/extensions/*.cjs "$dir"/extensions/*.ts; do
+  for ext in \
+    "$dir"/extensions/*.js \
+    "$dir"/extensions/*.mjs \
+    "$dir"/extensions/*.cjs \
+    "$dir"/extensions/*.ts \
+    "$dir"/extensions/*/index.js \
+    "$dir"/extensions/*/index.mjs \
+    "$dir"/extensions/*/index.cjs \
+    "$dir"/extensions/*/index.ts; do
     args+=(--extension "$ext")
   done
   shopt -u nullglob
@@ -549,6 +1041,14 @@ main() {
     create)
       shift
       create_profile "$@"
+      ;;
+    apply-pack)
+      shift
+      apply_pack_command "$@"
+      ;;
+    packs)
+      shift
+      list_packs "$@"
       ;;
     agent-path)
       shift

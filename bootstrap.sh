@@ -49,7 +49,15 @@ if [[ ! -x "$wrapper" ]]; then
   exit 1
 fi
 
-mkdir -p "$agent_root" "$default_agent_dir"
+mkdir -p \
+  "$agent_root" \
+  "$default_agent_dir" \
+  "$repo_dir/pi-packs" \
+  "$repo_dir/pi-shared/extensions" \
+  "$repo_dir/pi-shared/prompts" \
+  "$repo_dir/pi-shared/skills" \
+  "$repo_dir/pi-shared/themes" \
+  "$repo_dir/pi-shared/tools"
 
 "$wrapper" agent-path "$agent_root" >/dev/null
 
@@ -79,6 +87,7 @@ if ((link_profiles)); then
       "$profile_dir/prompts" \
       "$profile_dir/sessions" \
       "$profile_dir/skills" \
+      "$profile_dir/themes" \
       "$profile_dir/tools"
 
     link_profile_file "$profile_dir/auth.json" "$default_agent_dir/auth.json"

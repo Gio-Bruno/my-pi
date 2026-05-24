@@ -31,6 +31,14 @@ models.json
 sessions/
 **/sessions/
 my-pi-agents/*/settings.json
+mcp-cache.json
+**/mcp-cache.json
+mcp-npx-cache.json
+**/mcp-npx-cache.json
+mcp-onboarding.json
+**/mcp-onboarding.json
+mcp-oauth/
+**/mcp-oauth/
 .pi/
 **/.pi/
 

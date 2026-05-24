@@ -1,0 +1,9 @@
+sessions/
+auth.json
+models.json
+settings.json
+node_modules/
+mcp-cache.json
+mcp-npx-cache.json
+mcp-onboarding.json
+mcp-oauth/

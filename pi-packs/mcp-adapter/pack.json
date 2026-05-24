@@ -1,0 +1,18 @@
+{
+  "description": "MCP adapter extension with only the mcp gateway tool enabled.",
+  "sharedFiles": {
+    "extensions/pi-mcp-adapter.ts": "extensions/pi-mcp-adapter.ts"
+  },
+  "config": {
+    "extensionTools": ["mcp"]
+  },
+  "dependencies": {
+    "pi-mcp-adapter": "https://github.com/nicobailon/pi-mcp-adapter/archive/c28c3608e4dd0e7eaf92cc4306ea9875bc60e077.tar.gz"
+  },
+  "mcp": {
+    "settings": {
+      "toolPrefix": "server"
+    },
+    "mcpServers": {}
+  }
+}

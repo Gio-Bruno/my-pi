@@ -71,6 +71,8 @@ with_temp_home() {
 
   HOME="$tmp/home" \
   PI_AGENTS_HOME="$tmp/agents" \
+  PI_AGENT_PACKS_HOME="$tmp/packs" \
+  PI_SHARED_HOME="$tmp/shared" \
   PI_REAL_BIN="$tmp/bin/pi-real" \
   PI_FAKE_CAPTURE="$tmp/capture" \
   "$@"
@@ -91,6 +93,8 @@ with_temp_home_without_agent_env() {
   make_fake_pi "$tmp/bin"
 
   PI_AGENTS_HOME="" \
+  PI_AGENT_PACKS_HOME="$tmp/packs" \
+  PI_SHARED_HOME="$tmp/shared" \
   HOME="$tmp/home" \
   PI_REAL_BIN="$tmp/bin/pi-real" \
   PI_FAKE_CAPTURE="$tmp/capture" \
@@ -99,6 +103,43 @@ with_temp_home_without_agent_env() {
 
   rm -rf "$tmp"
   printf 'ok - %s\n' "$name"
+}
+
+make_test_pack() {
+  local pack="$PI_AGENT_PACKS_HOME/test-mcp"
+  mkdir -p "$pack" "$PI_SHARED_HOME/extensions" "$PI_SHARED_HOME/prompts"
+  cat >"$pack/pack.json" <<'JSON'
+{
+  "description": "test MCP pack",
+  "sharedFiles": {
+    "extensions/pi-mcp-adapter.ts": "extensions/pi-mcp-adapter.ts",
+    "prompts/review.md": "prompts/review.md"
+  },
+  "config": {
+    "extensionTools": ["mcp"]
+  },
+  "settings": {
+    "enableSkillCommands": true
+  },
+  "dependencies": {
+    "pi-mcp-adapter": "file:../fake-adapter"
+  },
+  "mcp": {
+    "settings": {
+      "toolPrefix": "server"
+    },
+    "mcpServers": {
+      "demo": {
+        "command": "node",
+        "args": ["demo.js"],
+        "lifecycle": "lazy"
+      }
+    }
+  }
+}
+JSON
+  printf 'export default function() {}\n' >"$PI_SHARED_HOME/extensions/pi-mcp-adapter.ts"
+  printf -- '---\ndescription: Review changes\n---\nReview.\n' >"$PI_SHARED_HOME/prompts/review.md"
 }
 
 test_create_profile() {
@@ -110,6 +151,7 @@ test_create_profile() {
   assert_dir "$profile/prompts"
   assert_dir "$profile/tools"
   assert_dir "$profile/extensions"
+  assert_dir "$profile/themes"
   assert_dir "$profile/sessions"
   assert_exists "$profile/.gitignore"
   assert_empty_file "$profile/APPEND_SYSTEM.md"
@@ -154,6 +196,9 @@ CONFIG
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--no-prompt-templates>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--prompt-template>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/prompts>"
+  assert_file_contains "$PI_FAKE_CAPTURE/args" "<--no-themes>"
+  assert_file_contains "$PI_FAKE_CAPTURE/args" "<--theme>"
+  assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/themes>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--no-extensions>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--extension>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/tools/mr_search.ts>"
@@ -214,6 +259,49 @@ test_empty_builtin_tools_still_enables_custom_tools() {
   assert_file_not_contains "$PI_FAKE_CAPTURE/args" "<read,write,edit,bash>"
 }
 
+test_create_with_pack() {
+  make_test_pack
+  "$PI_WRAPPER" create packed --tools "" --pack test-mcp --no-install >/tmp/pi-wrapper-create-pack.out
+
+  local profile="$PI_AGENTS_HOME/packed"
+  assert_exists "$profile/extensions/pi-mcp-adapter.ts"
+  assert_exists "$profile/prompts/review.md"
+  assert_exists "$profile/package.json"
+  assert_exists "$profile/mcp.json"
+  assert_file_contains "$profile/config.json" '"extensionTools": ['
+  assert_file_contains "$profile/config.json" '"mcp"'
+  assert_file_contains "$profile/package.json" '"pi-mcp-adapter": "file:../fake-adapter"'
+  assert_file_contains "$profile/mcp.json" '"demo"'
+  assert_file_contains "$profile/settings.json" '"enableSkillCommands": true'
+  assert_file_contains /tmp/pi-wrapper-create-pack.out "Applied profile pack: test-mcp"
+
+  "$PI_WRAPPER" packed -p "pack run"
+
+  assert_file_contains "$PI_FAKE_CAPTURE/args" "<$profile/extensions/pi-mcp-adapter.ts>"
+  assert_file_contains "$PI_FAKE_CAPTURE/args" "<mcp>"
+  assert_file_not_contains "$PI_FAKE_CAPTURE/args" "<read,write,edit,bash>"
+}
+
+test_apply_pack_to_existing_profile() {
+  make_test_pack
+  "$PI_WRAPPER" create existing --tools read --no-install >/dev/null
+  "$PI_WRAPPER" apply-pack existing test-mcp --no-install >/tmp/pi-wrapper-apply-pack.out
+
+  local profile="$PI_AGENTS_HOME/existing"
+  assert_exists "$profile/extensions/pi-mcp-adapter.ts"
+  assert_file_contains "$profile/config.json" '"read"'
+  assert_file_contains "$profile/config.json" '"mcp"'
+  assert_exists "$profile/prompts/review.md"
+  assert_file_contains /tmp/pi-wrapper-apply-pack.out "Applied profile pack: test-mcp"
+}
+
+test_list_packs() {
+  make_test_pack
+  "$PI_WRAPPER" packs >/tmp/pi-wrapper-packs.out
+
+  assert_file_contains /tmp/pi-wrapper-packs.out "test-mcp - test MCP pack"
+}
+
 test_unknown_command_passes_through_to_real_pi() {
   "$PI_WRAPPER" --version
 
@@ -226,5 +314,8 @@ with_temp_home "create profile" test_create_profile
 with_temp_home "run profile isolated" test_run_profile_isolated
 with_temp_home "custom system prompt can be defined in config" test_custom_system_prompt_can_be_defined_in_config
 with_temp_home "empty builtin tools still enables custom tools" test_empty_builtin_tools_still_enables_custom_tools
+with_temp_home "create with pack" test_create_with_pack
+with_temp_home "apply pack to existing profile" test_apply_pack_to_existing_profile
+with_temp_home "list packs" test_list_packs
 with_temp_home "unknown command passthrough" test_unknown_command_passes_through_to_real_pi
 with_temp_home_without_agent_env "agent path sets profile root when env is unset" test_agent_path_sets_profile_root_when_env_is_unset

@@ -13,6 +13,7 @@ mr-default/
   prompts/
   tools/
   extensions/
+  themes/
 ```
 
 Local-only files are ignored and should be recreated per machine:
@@ -31,4 +32,11 @@ Create another profile with:
 
 ```sh
 pi create <profile-name>
+```
+
+Create a profile by pulling reusable resources from packs:
+
+```sh
+pi create my-mcp --tools "" --pack mcp-adapter
+pi create my-agent --pack mcp-adapter --pack team-prompts
 ```
