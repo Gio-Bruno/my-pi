@@ -1,0 +1,6 @@
+{
+  "description": "RTK Pi extension hook for automatic bash command rewriting/token savings.",
+  "sharedFiles": {
+    "extensions/rtk.ts": "extensions/rtk.ts"
+  }
+}
