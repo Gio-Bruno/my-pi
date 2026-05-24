@@ -348,6 +348,7 @@ CONFIG
 sessions/
 auth.json
 models.json
+settings.json
 GITIGNORE
 
   if ((copy_settings)) && [[ -f "$DEFAULT_AGENT_DIR/settings.json" ]]; then

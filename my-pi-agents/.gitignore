@@ -6,8 +6,15 @@
 *.p12
 *.pfx
 id_rsa
+id_rsa.*
 id_ed25519
-auth.json
+id_ed25519.*
 secrets/
-sessions/
+*/secrets/
+auth.json
+*/auth.json
 models.json
+*/models.json
+sessions/
+*/sessions/
+*/settings.json

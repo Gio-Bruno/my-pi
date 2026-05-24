@@ -125,6 +125,7 @@ test_create_profile() {
   assert_file_contains "$profile/.gitignore" "sessions/"
   assert_file_contains "$profile/.gitignore" "auth.json"
   assert_file_contains "$profile/.gitignore" "models.json"
+  assert_file_contains "$profile/.gitignore" "settings.json"
   assert_file_contains /tmp/pi-wrapper-create.out "Created Pi agent profile: researcher"
 }
 

@@ -30,6 +30,7 @@ models.json
 # Pi local state
 sessions/
 **/sessions/
+my-pi-agents/*/settings.json
 .pi/
 **/.pi/
 
