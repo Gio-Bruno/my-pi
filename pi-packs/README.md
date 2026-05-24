@@ -37,7 +37,8 @@ Example:
     "skills/code-review": "skills/code-review"
   },
   "config": {
-    "extensionTools": ["mcp"]
+    "extensionTools": ["mcp"],
+    "extensionPackages": ["npm:@scope/pi-package"]
   },
   "settings": {
     "enableSkillCommands": true
@@ -52,7 +53,7 @@ Manifest fields merged into the target profile:
 
 - `sharedFiles`: copy files/directories from `pi-shared/` into the profile
 - `files/`: copy pack-local files/directories into the profile
-- `config.builtinTools`, `config.extensionTools`, `config.extraArgs`
+- `config.builtinTools`, `config.extensionTools`, `config.extensionPackages`, `config.extraArgs`
 - `config.systemPrompt`, `config.appendSystemPrompt`
 - `settings`: profile `settings.json` object entries
 - `dependencies` / `devDependencies` / `peerDependencies` / `optionalDependencies`
@@ -73,3 +74,4 @@ When a pack adds package dependencies, the wrapper runs `npm install` in the tar
 - `mcp-adapter` - MCP adapter extension with only the gateway tool enabled.
 - `rtk` - RTK command rewriting/token-saving extension hook.
 - `firecrawl` - Firecrawl MCP server exposed as direct scrape/search/map/crawl/extract tools. Requires `FIRECRAWL_API_KEY` in the local environment.
+- `plannotator` - Plannotator Pi package for visual plan/code review and annotations. Upstream: https://github.com/backnotprop/plannotator

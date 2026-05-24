@@ -1,0 +1,6 @@
+{
+  "description": "Plannotator Pi package for visual plan/code review and annotations.",
+  "config": {
+    "extensionPackages": ["npm:@plannotator/pi-extension"]
+  }
+}

@@ -506,7 +506,7 @@ const manifest = readJson(manifestPath, {});
 const configPatch = {
   ...(manifest.config && typeof manifest.config === "object" && !Array.isArray(manifest.config) ? manifest.config : {}),
 };
-for (const key of ["builtinTools", "extensionTools", "extraArgs", "systemPrompt", "appendSystemPrompt"]) {
+for (const key of ["builtinTools", "extensionTools", "extensionPackages", "extraArgs", "systemPrompt", "appendSystemPrompt"]) {
   if (Object.prototype.hasOwnProperty.call(manifest, key)) {
     configPatch[key] = manifest[key];
   }
@@ -516,6 +516,7 @@ const configPath = path.join(profileDir, "config.json");
 const config = readJson(configPath, { builtinTools: [], extensionTools: [], extraArgs: [] });
 mergeStringArray(config, "builtinTools", configPatch.builtinTools, "pack.config.builtinTools");
 mergeStringArray(config, "extensionTools", configPatch.extensionTools, "pack.config.extensionTools");
+mergeStringArray(config, "extensionPackages", configPatch.extensionPackages, "pack.config.extensionPackages");
 mergeStringArray(config, "extraArgs", configPatch.extraArgs, "pack.config.extraArgs");
 for (const key of ["systemPrompt", "appendSystemPrompt"]) {
   if (Object.prototype.hasOwnProperty.call(configPatch, key)) {
@@ -758,6 +759,7 @@ create_profile() {
 {
   "builtinTools": $builtin_tools_json,
   "extensionTools": [],
+  "extensionPackages": [],
   "extraArgs": []
 }
 CONFIG
@@ -897,6 +899,7 @@ run_profile() {
   local config="$dir/config.json"
   local -a builtin_tools=()
   local -a extension_tools=()
+  local -a extension_packages=()
   local -a extra_args=()
   local system_prompt
   local append_system_prompt
@@ -909,6 +912,10 @@ run_profile() {
   while IFS= read -r item; do
     extension_tools+=("$item")
   done < <(config_array_items "$config" extensionTools '[]')
+
+  while IFS= read -r item; do
+    extension_packages+=("$item")
+  done < <(config_array_items "$config" extensionPackages '[]')
 
   while IFS= read -r item; do
     extra_args+=("$item")
@@ -986,6 +993,12 @@ run_profile() {
     args+=(--extension "$ext")
   done
   shopt -u nullglob
+
+  local extension_package
+  for extension_package in "${extension_packages[@]}"; do
+    [[ -n "$extension_package" ]] || die "extension package source cannot be empty"
+    args+=(--extension "$extension_package")
+  done
 
   for enabled_tool in "${extension_tools[@]}"; do
     validate_tool_name "$enabled_tool"

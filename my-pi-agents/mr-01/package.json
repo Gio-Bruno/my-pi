@@ -1,0 +1,9 @@
+{
+  "name": "mr-01-pi-profile",
+  "private": true,
+  "type": "module",
+  "description": "Local dependencies for the mr-01 Pi profile.",
+  "dependencies": {
+    "pi-mcp-adapter": "https://github.com/nicobailon/pi-mcp-adapter/archive/c28c3608e4dd0e7eaf92cc4306ea9875bc60e077.tar.gz"
+  }
+}

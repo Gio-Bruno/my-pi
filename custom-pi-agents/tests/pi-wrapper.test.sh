@@ -116,7 +116,8 @@ make_test_pack() {
     "prompts/review.md": "prompts/review.md"
   },
   "config": {
-    "extensionTools": ["mcp"]
+    "extensionTools": ["mcp"],
+    "extensionPackages": ["npm:@example/test-extension"]
   },
   "settings": {
     "enableSkillCommands": true
@@ -163,6 +164,7 @@ test_create_profile() {
   [[ "$(readlink "$profile/auth.json")" == "$HOME/.pi/agent/auth.json" ]] || fail "expected auth.json to derive from home .pi"
   [[ "$(readlink "$profile/models.json")" == "$HOME/.pi/agent/models.json" ]] || fail "expected models.json to derive from home .pi"
   assert_file_contains "$profile/config.json" '"builtinTools"'
+  assert_file_contains "$profile/config.json" '"extensionPackages"'
   assert_file_not_contains "$profile/config.json" '"systemPrompt"'
   assert_file_contains "$profile/.gitignore" "sessions/"
   assert_file_contains "$profile/.gitignore" "auth.json"
@@ -181,6 +183,7 @@ test_run_profile_isolated() {
 {
   "builtinTools": ["read", "grep", "find", "ls"],
   "extensionTools": ["session_log"],
+  "extensionPackages": ["npm:@example/test-extension"],
   "extraArgs": ["--thinking", "high"]
 }
 CONFIG
@@ -203,6 +206,7 @@ CONFIG
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--extension>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/tools/mr_search.ts>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/extensions/session-log.ts>"
+  assert_file_contains "$PI_FAKE_CAPTURE/args" "<npm:@example/test-extension>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--append-system-prompt>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/APPEND_SYSTEM.md>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--tools>"
@@ -269,7 +273,9 @@ test_create_with_pack() {
   assert_exists "$profile/package.json"
   assert_exists "$profile/mcp.json"
   assert_file_contains "$profile/config.json" '"extensionTools": ['
+  assert_file_contains "$profile/config.json" '"extensionPackages": ['
   assert_file_contains "$profile/config.json" '"mcp"'
+  assert_file_contains "$profile/config.json" '"npm:@example/test-extension"'
   assert_file_contains "$profile/package.json" '"pi-mcp-adapter": "file:../fake-adapter"'
   assert_file_contains "$profile/mcp.json" '"demo"'
   assert_file_contains "$profile/settings.json" '"enableSkillCommands": true'
@@ -278,6 +284,7 @@ test_create_with_pack() {
   "$PI_WRAPPER" packed -p "pack run"
 
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$profile/extensions/pi-mcp-adapter.ts>"
+  assert_file_contains "$PI_FAKE_CAPTURE/args" "<npm:@example/test-extension>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<mcp>"
   assert_file_not_contains "$PI_FAKE_CAPTURE/args" "<read,write,edit,bash>"
 }

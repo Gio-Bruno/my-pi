@@ -48,6 +48,7 @@ pi packs
 pi create my-mcp --tools "" --pack mcp-adapter
 pi create my-agent --pack mcp-adapter --pack team-prompts --pack review-skills
 pi create my-firecrawl --pack firecrawl
+pi create my-planner --pack plannotator
 ```
 
 Add packs to an existing agent:
@@ -55,6 +56,7 @@ Add packs to an existing agent:
 ```sh
 pi apply-pack existing-agent mcp-adapter team-prompts
 pi apply-pack existing-agent firecrawl
+pi apply-pack existing-agent plannotator
 ```
 
 Packs are copy/apply templates. Shared resources live in `pi-shared/`, but each
