@@ -6,6 +6,13 @@
 # Logs
 *.log
 
+# Local planning / prototypes
+plans/
+**/plans/
+*.html
+wireframes/
+**/wireframes/
+
 # Environment and credentials
 .env
 .env.*
@@ -30,6 +37,8 @@ models.json
 # Pi local state
 sessions/
 **/sessions/
+.impeccable/
+**/.impeccable/
 my-pi-agents/*/settings.json
 mcp-cache.json
 **/mcp-cache.json
