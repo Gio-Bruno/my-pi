@@ -16,8 +16,5 @@
   ],
   "extensionPackages": [
     "npm:@plannotator/pi-extension"
-  ],
-  "extraArgs": [
-    "--plan"
   ]
 }
