@@ -28,6 +28,33 @@ CLI options:
 pi-workflow <workflow.ts> [--json '{"key":"value"}'] [--cwd path] [--profile-root path]
 ```
 
+## Generated workflow bundles
+
+Generated workflows live under `workflows/`:
+
+```text
+workflows/<slug>.workflow.ts
+workflows/<slug>/prompts/*.md
+workflows/<slug>/steps/*.ts
+workflows/<slug>/schemas.ts
+workflows/<slug>/manifest.json
+```
+
+From the `mr-01` profile, `/workflow-creator` can generate a bundle from a prompt, skill, or natural-language description:
+
+```text
+/workflow-creator pi-workflows/fixtures/workflow-creator/executing-plans/SKILL.md --name executing-plans
+/workflow-creator pi-workflows/fixtures/workflow-creator/firecrawl-scrape/SKILL.md --name firecrawl-scrape
+```
+
+Then run it with:
+
+```text
+/workflow <slug>
+```
+
+The creator fails if the bundle exists unless `--force` is passed.
+
 ## Simple API
 
 ```ts

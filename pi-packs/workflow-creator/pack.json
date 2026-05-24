@@ -1,0 +1,10 @@
+{
+  "description": "Workflow Creator skill and slash prompt for generating pi-workflows workflow bundles from prompts, skills, or natural language.",
+  "sharedFiles": {
+    "skills/workflow-creator": "skills/workflow-creator",
+    "prompts/workflow-creator.md": "prompts/workflow-creator.md"
+  },
+  "settings": {
+    "enableSkillCommands": true
+  }
+}

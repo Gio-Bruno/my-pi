@@ -7,10 +7,16 @@ const extensionDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(extensionDir, "..", "..", "..");
 const workflowsDir = join(repoRoot, "pi-workflows");
 const examplesDir = join(workflowsDir, "examples");
+const generatedDir = join(workflowsDir, "workflows");
+
+interface WorkflowMatch {
+  kind: "path" | "example" | "generated";
+  path: string;
+}
 
 export default function workflowCommand(pi: ExtensionAPI) {
   pi.registerCommand("workflow", {
-    description: "Run a pi-workflows workflow file or example",
+    description: "Run a pi-workflows workflow file, example, or generated workflow",
     handler: async (args, ctx) => {
       const parsed = parseWorkflowArgs(args);
 
@@ -23,16 +29,17 @@ export default function workflowCommand(pi: ExtensionAPI) {
         return;
       }
 
-      const workflowPath = resolveWorkflowPath(parsed.workflow);
-      if (!workflowPath) {
+      const resolved = resolveWorkflowPath(parsed.workflow);
+      if (resolved.error || !resolved.match) {
         pi.sendMessage({
           customType: "workflow",
           display: true,
-          content: `Unknown workflow: ${parsed.workflow}\n\n${workflowHelp()}`,
+          content: `${resolved.error ?? `Unknown workflow: ${parsed.workflow}`}\n\n${workflowHelp()}`,
         });
         return;
       }
 
+      const workflowPath = resolved.match.path;
       ctx.ui.setStatus("workflow", `workflow:${parsed.workflow}`);
       ctx.ui.notify(`Running workflow: ${parsed.workflow}`, "info");
 
@@ -48,6 +55,7 @@ export default function workflowCommand(pi: ExtensionAPI) {
         const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
         const content = [
           `Workflow: ${parsed.workflow}`,
+          `Kind: ${resolved.match.kind}`,
           `Exit code: ${result.code}`,
           "",
           truncate(output || "(no output)", 20_000),
@@ -60,6 +68,7 @@ export default function workflowCommand(pi: ExtensionAPI) {
           details: {
             workflow: parsed.workflow,
             workflowPath,
+            kind: resolved.match.kind,
             code: result.code,
             killed: result.killed,
           },
@@ -87,28 +96,45 @@ function parseWorkflowArgs(args: string): { workflow?: string; json?: string } {
   return { workflow, json: JSON.stringify({ input: restParts.join(" ") }) };
 }
 
-function resolveWorkflowPath(nameOrPath: string): string | undefined {
+function resolveWorkflowPath(nameOrPath: string): { match?: WorkflowMatch; error?: string } {
   const expanded = nameOrPath.endsWith(".ts") ? nameOrPath : `${nameOrPath}.workflow.ts`;
-
   const direct = resolve(repoRoot, expanded);
-  if (existsSync(direct)) return direct;
+  if (existsSync(direct)) return { match: { kind: "path", path: direct } };
 
-  const example = join(examplesDir, expanded);
-  if (existsSync(example)) return example;
+  if (nameOrPath.includes("/") || nameOrPath.includes("\\")) {
+    return { error: `Unknown workflow path: ${nameOrPath}` };
+  }
 
-  return undefined;
+  const stem = nameOrPath.replace(/\.workflow\.ts$/, "");
+  const candidates: WorkflowMatch[] = [];
+
+  const example = join(examplesDir, `${stem}.workflow.ts`);
+  if (existsSync(example)) candidates.push({ kind: "example", path: example });
+
+  const generated = join(generatedDir, `${stem}.workflow.ts`);
+  if (existsSync(generated)) candidates.push({ kind: "generated", path: generated });
+
+  if (candidates.length === 1) return { match: candidates[0] };
+  if (candidates.length > 1) {
+    return {
+      error: `Ambiguous workflow "${nameOrPath}" exists as both an example and generated workflow. Use an explicit path such as examples/${stem}.workflow.ts or workflows/${stem}.workflow.ts.`,
+    };
+  }
+
+  return { error: `Unknown workflow: ${nameOrPath}` };
 }
 
-function listWorkflows(): string[] {
-  if (!existsSync(examplesDir)) return [];
-  return readdirSync(examplesDir)
+function listWorkflowStems(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
     .filter((file) => file.endsWith(".workflow.ts"))
     .map((file) => file.replace(/\.workflow\.ts$/, ""))
     .sort();
 }
 
 function workflowHelp(): string {
-  const workflows = listWorkflows();
+  const examples = listWorkflowStems(examplesDir);
+  const generated = listWorkflowStems(generatedDir);
   return [
     "# /workflow",
     "",
@@ -117,13 +143,15 @@ function workflowHelp(): string {
     "Usage:",
     "  /workflow                         # list workflows",
     "  /workflow smoke                   # no-LLM smoke test",
-    "  /workflow mr-01-agent-smoke       # real mr-01 SDK agent smoke test",
     "  /workflow codebase-question {\"question\":\"Where is the workflow command registered?\"}",
-    "  /workflow fix-tests {\"maxLoops\":1}",
+    "  /workflow <generated-slug> {\"key\":\"value\"}",
     "  /workflow path/to/custom.workflow.ts --json {\"key\":\"value\"}",
     "",
     "Available example workflows:",
-    ...(workflows.length ? workflows.map((name) => `  - ${name}`) : ["  (none found)"]),
+    ...(examples.length ? examples.map((name) => `  - ${name}`) : ["  (none found)"]),
+    "",
+    "Available generated workflows:",
+    ...(generated.length ? generated.map((name) => `  - ${name}`) : ["  (none found)"]),
     "",
     `Workflow project: ${workflowsDir}`,
   ].join("\n");
