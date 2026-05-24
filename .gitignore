@@ -1,0 +1,38 @@
+# OS/editor
+.DS_Store
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+secrets/
+**/secrets/
+auth.json
+**/auth.json
+models.json
+**/models.json
+
+# Pi local state
+sessions/
+**/sessions/
+.pi/
+**/.pi/
+
+# Package/dependency caches
+node_modules/
+**/node_modules/

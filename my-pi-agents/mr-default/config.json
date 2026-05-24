@@ -1,0 +1,5 @@
+{
+  "builtinTools": ["read", "write", "edit", "bash"],
+  "extensionTools": [],
+  "extraArgs": []
+}

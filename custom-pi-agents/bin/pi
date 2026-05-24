@@ -1,0 +1,585 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+DEFAULT_AGENT_DIR="${PI_DEFAULT_AGENT_DIR:-$HOME/.pi/agent}"
+DEFAULT_BUILTIN_TOOLS="read,write,edit,bash"
+WRAPPER_CONFIG_DIR="${PI_WRAPPER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/custom-pi-agents}"
+AGENT_PATH_FILE="$WRAPPER_CONFIG_DIR/agent-path"
+
+usage() {
+  cat <<'USAGE'
+Pi profile wrapper
+
+Commands:
+  pi create <agent-name> [--tools <csv>]   Create an isolated Pi profile
+                                           --tools sets builtinTools in config.json
+  pi agent-path [path|--clear]             Show, set, or clear the profile root
+  pi agents                                List managed Pi profiles
+  pi run <agent-name> [pi args...]         Run a managed profile explicitly
+  pi <agent-name> [pi args...]             Run an existing managed profile
+  pi raw [pi args...]                      Call the real Pi binary directly
+  pi help                                  Show this help
+
+Environment:
+  PI_AGENTS_HOME       Profile root. Default: ~/.pi-agents
+                       Overrides a stored pi agent-path value.
+  PI_REAL_BIN          Real Pi binary. Default: first non-wrapper pi in PATH,
+                       then /opt/homebrew/bin/pi, then /usr/local/bin/pi.
+  PI_DEFAULT_AGENT_DIR Default Pi profile copied/linked at create time.
+                       Default: ~/.pi/agent
+USAGE
+}
+
+die() {
+  printf 'pi profile wrapper: %s\n' "$*" >&2
+  exit 1
+}
+
+canonical_path() {
+  local target="$1"
+  local dir
+  local base
+  dir="$(cd "$(dirname "$target")" && pwd -P)" || return 1
+  base="$(basename "$target")"
+  printf '%s/%s\n' "$dir" "$base"
+}
+
+script_path() {
+  canonical_path "${BASH_SOURCE[0]}"
+}
+
+find_real_pi() {
+  if [[ -n "${PI_REAL_BIN:-}" ]]; then
+    [[ -x "$PI_REAL_BIN" ]] || die "PI_REAL_BIN is not executable: $PI_REAL_BIN"
+    printf '%s\n' "$PI_REAL_BIN"
+    return
+  fi
+
+  local self
+  self="$(script_path)"
+
+  local path_dir
+  local candidate
+  local canonical_candidate
+  IFS=':' read -r -a path_entries <<<"${PATH:-}"
+  for path_dir in "${path_entries[@]}"; do
+    [[ -n "$path_dir" ]] || path_dir='.'
+    candidate="$path_dir/pi"
+    [[ -x "$candidate" && ! -d "$candidate" ]] || continue
+    canonical_candidate="$(canonical_path "$candidate" 2>/dev/null || true)"
+    [[ "$canonical_candidate" != "$self" ]] || continue
+    printf '%s\n' "$candidate"
+    return
+  done
+
+  for candidate in /opt/homebrew/bin/pi /usr/local/bin/pi; do
+    [[ -x "$candidate" && ! -d "$candidate" ]] || continue
+    canonical_candidate="$(canonical_path "$candidate" 2>/dev/null || true)"
+    [[ "$canonical_candidate" != "$self" ]] || continue
+    printf '%s\n' "$candidate"
+    return
+  done
+
+  die "could not find the real pi binary; set PI_REAL_BIN=/path/to/pi"
+}
+
+validate_agent_name() {
+  local name="$1"
+  [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
+    die "invalid agent name '$name' (use letters, numbers, dots, underscores, and dashes; start with a letter or number)"
+  }
+}
+
+validate_tool_name() {
+  local name="$1"
+  [[ "$name" =~ ^[A-Za-z0-9_.:-]+$ ]] || die "invalid tool name '$name'"
+}
+
+json_array_from_csv() {
+  local csv="$1"
+  local first=1
+  local raw
+  local item
+  local -a csv_items=()
+
+  printf '['
+  if [[ -n "$csv" ]]; then
+    IFS=',' read -r -a csv_items <<<"$csv"
+    for raw in "${csv_items[@]}"; do
+      item="${raw#"${raw%%[![:space:]]*}"}"
+      item="${item%"${item##*[![:space:]]}"}"
+      [[ -n "$item" ]] || continue
+      validate_tool_name "$item"
+      if ((first == 0)); then
+        printf ', '
+      fi
+      printf '"%s"' "$item"
+      first=0
+    done
+  fi
+  printf ']'
+}
+
+config_array_items() {
+  local config="$1"
+  local key="$2"
+  local default_json="$3"
+
+  command -v node >/dev/null 2>&1 || die "node is required to read profile config.json"
+
+  node - "$config" "$key" "$default_json" <<'NODE'
+const fs = require("node:fs");
+
+const [configPath, key, defaultJson] = process.argv.slice(2);
+let config = {};
+
+if (fs.existsSync(configPath)) {
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    console.error(`Invalid JSON in ${configPath}: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+const value = Object.prototype.hasOwnProperty.call(config, key)
+  ? config[key]
+  : JSON.parse(defaultJson);
+
+if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+  console.error(`${configPath}: ${key} must be an array of strings`);
+  process.exit(1);
+}
+
+for (const item of value) {
+  process.stdout.write(`${item}\n`);
+}
+NODE
+}
+
+config_string_item() {
+  local config="$1"
+  local key="$2"
+  local default_json="$3"
+
+  command -v node >/dev/null 2>&1 || die "node is required to read profile config.json"
+
+  node - "$config" "$key" "$default_json" <<'NODE'
+const fs = require("node:fs");
+
+const [configPath, key, defaultJson] = process.argv.slice(2);
+let config = {};
+
+if (fs.existsSync(configPath)) {
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    console.error(`Invalid JSON in ${configPath}: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+const value = Object.prototype.hasOwnProperty.call(config, key)
+  ? config[key]
+  : JSON.parse(defaultJson);
+
+if (value === null || value === "") {
+  process.exit(0);
+}
+
+if (typeof value !== "string") {
+  console.error(`${configPath}: ${key} must be a string or null`);
+  process.exit(1);
+}
+
+process.stdout.write(value);
+NODE
+}
+
+expand_home_path() {
+  local path="$1"
+  case "$path" in
+    "~")
+      printf '%s\n' "$HOME"
+      ;;
+    "~/"*)
+      printf '%s/%s\n' "$HOME" "${path#"~/"}"
+      ;;
+    *)
+      printf '%s\n' "$path"
+      ;;
+  esac
+}
+
+absolute_path() {
+  local path
+  path="$(expand_home_path "$1")"
+  case "$path" in
+    /*)
+      printf '%s\n' "$path"
+      ;;
+    *)
+      printf '%s/%s\n' "$(pwd -P)" "$path"
+      ;;
+  esac
+}
+
+profile_root() {
+  if [[ -n "${PI_AGENTS_HOME:-}" ]]; then
+    printf '%s\n' "$PI_AGENTS_HOME"
+    return
+  fi
+
+  if [[ -f "$AGENT_PATH_FILE" ]]; then
+    local stored_path
+    IFS= read -r stored_path <"$AGENT_PATH_FILE" || true
+    if [[ -n "$stored_path" ]]; then
+      printf '%s\n' "$stored_path"
+      return
+    fi
+  fi
+
+  printf '%s/.pi-agents\n' "$HOME"
+}
+
+set_agent_path() {
+  case "${1:-}" in
+    "")
+      printf '%s\n' "$(profile_root)"
+      return
+      ;;
+    --clear)
+      rm -f "$AGENT_PATH_FILE"
+      printf 'Pi agent path cleared. Current path: %s\n' "$(profile_root)"
+      return
+      ;;
+  esac
+
+  (($# == 1)) || die "usage: pi agent-path [path|--clear]"
+
+  local root
+  root="$(absolute_path "$1")"
+  mkdir -p "$root" "$WRAPPER_CONFIG_DIR"
+  root="$(cd "$root" && pwd -P)"
+  printf '%s\n' "$root" >"$AGENT_PATH_FILE"
+  printf 'Pi agent path: %s\n' "$root"
+}
+
+resolve_profile_file() {
+  local dir="$1"
+  local path="$2"
+  path="$(expand_home_path "$path")"
+  case "$path" in
+    /*)
+      printf '%s\n' "$path"
+      ;;
+    *)
+      printf '%s/%s\n' "$dir" "$path"
+      ;;
+  esac
+}
+
+profile_dir() {
+  local name="$1"
+  printf '%s/%s\n' "$(profile_root)" "$name"
+}
+
+ensure_profile_dirs() {
+  local dir="$1"
+  mkdir -p "$dir/skills" "$dir/prompts" "$dir/tools" "$dir/extensions" "$dir/sessions"
+}
+
+create_profile() {
+  local name=""
+  local tools="$DEFAULT_BUILTIN_TOOLS"
+  local link_auth=1
+  local copy_settings=1
+
+  while (($#)); do
+    case "$1" in
+      --tools)
+        shift
+        (($#)) || die "--tools requires a comma-separated value"
+        tools="$1"
+        ;;
+      --no-auth-link)
+        link_auth=0
+        ;;
+      --no-settings-copy)
+        copy_settings=0
+        ;;
+      -h|--help)
+        usage
+        return
+        ;;
+      -*)
+        die "unknown create option: $1"
+        ;;
+      *)
+        [[ -z "$name" ]] || die "create accepts one agent name"
+        name="$1"
+        ;;
+    esac
+    shift
+  done
+
+  [[ -n "$name" ]] || die "usage: pi create <agent-name>"
+  validate_agent_name "$name"
+
+  local dir
+  dir="$(profile_dir "$name")"
+  [[ ! -e "$dir" ]] || die "profile already exists: $dir"
+
+  ensure_profile_dirs "$dir"
+
+  local builtin_tools_json
+  builtin_tools_json="$(json_array_from_csv "$tools")"
+
+  cat >"$dir/config.json" <<CONFIG
+{
+  "builtinTools": $builtin_tools_json,
+  "extensionTools": [],
+  "extraArgs": []
+}
+CONFIG
+
+  : >"$dir/APPEND_SYSTEM.md"
+  cat >"$dir/.gitignore" <<'GITIGNORE'
+sessions/
+auth.json
+models.json
+GITIGNORE
+
+  if ((copy_settings)) && [[ -f "$DEFAULT_AGENT_DIR/settings.json" ]]; then
+    cp "$DEFAULT_AGENT_DIR/settings.json" "$dir/settings.json"
+  fi
+
+  mkdir -p "$DEFAULT_AGENT_DIR"
+
+  if ((link_auth)); then
+    ln -s "$DEFAULT_AGENT_DIR/auth.json" "$dir/auth.json"
+  fi
+
+  ln -s "$DEFAULT_AGENT_DIR/models.json" "$dir/models.json"
+
+  printf 'Created Pi agent profile: %s\n' "$name"
+  printf 'Profile directory: %s\n' "$dir"
+}
+
+list_profiles() {
+  case "${1:-}" in
+    -h|--help)
+      usage
+      return
+      ;;
+    "")
+      ;;
+    *)
+      die "usage: pi agents"
+      ;;
+  esac
+
+  local root
+  root="$(profile_root)"
+
+  if [[ ! -d "$root" ]]; then
+    printf 'No managed Pi profiles found under %s\n' "$root"
+    return
+  fi
+
+  local found=0
+  local dir
+  for dir in "$root"/*; do
+    [[ -d "$dir" ]] || continue
+    found=1
+    printf '%s\n' "$(basename "$dir")"
+  done
+
+  if ((found == 0)); then
+    printf 'No managed Pi profiles found under %s\n' "$root"
+  fi
+}
+
+run_profile() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "usage: pi run <agent-name> [pi args...]"
+  validate_agent_name "$name"
+  shift || true
+
+  local dir
+  dir="$(profile_dir "$name")"
+  [[ -d "$dir" ]] || die "profile '$name' does not exist; create it with: pi create $name"
+  ensure_profile_dirs "$dir"
+
+  local config="$dir/config.json"
+  local -a builtin_tools=()
+  local -a extension_tools=()
+  local -a extra_args=()
+  local system_prompt
+  local append_system_prompt
+  local item
+
+  while IFS= read -r item; do
+    builtin_tools+=("$item")
+  done < <(config_array_items "$config" builtinTools '["read","write","edit","bash"]')
+
+  while IFS= read -r item; do
+    extension_tools+=("$item")
+  done < <(config_array_items "$config" extensionTools '[]')
+
+  while IFS= read -r item; do
+    extra_args+=("$item")
+  done < <(config_array_items "$config" extraArgs '[]')
+
+  system_prompt="$(config_string_item "$config" systemPrompt 'null')"
+  append_system_prompt="$(config_string_item "$config" appendSystemPrompt '"APPEND_SYSTEM.md"')"
+
+  local -a args=(
+    --no-context-files
+    --no-skills
+    --skill "$dir/skills"
+    --no-prompt-templates
+    --prompt-template "$dir/prompts"
+    --no-extensions
+  )
+
+  local -a enabled_tools=()
+  local enabled_tool
+  local existing_tool
+  local already_enabled
+
+  for enabled_tool in "${builtin_tools[@]}"; do
+    validate_tool_name "$enabled_tool"
+    already_enabled=0
+    if ((${#enabled_tools[@]} > 0)); then
+      for existing_tool in "${enabled_tools[@]}"; do
+        if [[ "$existing_tool" == "$enabled_tool" ]]; then
+          already_enabled=1
+          break
+        fi
+      done
+    fi
+    if ((already_enabled == 0)); then
+      enabled_tools+=("$enabled_tool")
+    fi
+  done
+
+  local tool_file
+  local tool_name
+  shopt -s nullglob
+  for tool_file in "$dir"/tools/*.js "$dir"/tools/*.mjs "$dir"/tools/*.cjs "$dir"/tools/*.ts; do
+    args+=(--extension "$tool_file")
+    tool_name="$(basename "$tool_file")"
+    tool_name="${tool_name%.*}"
+    validate_tool_name "$tool_name"
+    already_enabled=0
+    if ((${#enabled_tools[@]} > 0)); then
+      for existing_tool in "${enabled_tools[@]}"; do
+        if [[ "$existing_tool" == "$tool_name" ]]; then
+          already_enabled=1
+          break
+        fi
+      done
+    fi
+    if ((already_enabled == 0)); then
+      enabled_tools+=("$tool_name")
+    fi
+  done
+  shopt -u nullglob
+
+  local ext
+  shopt -s nullglob
+  for ext in "$dir"/extensions/*.js "$dir"/extensions/*.mjs "$dir"/extensions/*.cjs "$dir"/extensions/*.ts; do
+    args+=(--extension "$ext")
+  done
+  shopt -u nullglob
+
+  for enabled_tool in "${extension_tools[@]}"; do
+    validate_tool_name "$enabled_tool"
+    already_enabled=0
+    if ((${#enabled_tools[@]} > 0)); then
+      for existing_tool in "${enabled_tools[@]}"; do
+        if [[ "$existing_tool" == "$enabled_tool" ]]; then
+          already_enabled=1
+          break
+        fi
+      done
+    fi
+    if ((already_enabled == 0)); then
+      enabled_tools+=("$enabled_tool")
+    fi
+  done
+
+  if [[ -n "$system_prompt" ]]; then
+    local system_prompt_path
+    system_prompt_path="$(resolve_profile_file "$dir" "$system_prompt")"
+    [[ -f "$system_prompt_path" ]] || die "systemPrompt file does not exist: $system_prompt_path"
+    args+=(--system-prompt "$system_prompt_path")
+  fi
+
+  if [[ -n "$append_system_prompt" ]]; then
+    local append_system_prompt_path
+    append_system_prompt_path="$(resolve_profile_file "$dir" "$append_system_prompt")"
+    [[ -f "$append_system_prompt_path" ]] || die "appendSystemPrompt file does not exist: $append_system_prompt_path"
+    args+=(--append-system-prompt "$append_system_prompt_path")
+  fi
+
+  if ((${#enabled_tools[@]} > 0)); then
+    local joined_tools
+    joined_tools="$(IFS=','; printf '%s' "${enabled_tools[*]}")"
+    args+=(--tools "$joined_tools")
+  else
+    args+=(--no-tools)
+  fi
+
+  args+=("${extra_args[@]}")
+
+  local real_pi
+  real_pi="$(find_real_pi)"
+
+  PI_CODING_AGENT_DIR="$dir" \
+  PI_CODING_AGENT_SESSION_DIR="$dir/sessions" \
+  exec "$real_pi" "${args[@]}" "$@"
+}
+
+main() {
+  local command="${1:-}"
+  case "$command" in
+    create)
+      shift
+      create_profile "$@"
+      ;;
+    agent-path)
+      shift
+      set_agent_path "$@"
+      ;;
+    agents)
+      shift
+      list_profiles "$@"
+      ;;
+    run)
+      shift
+      run_profile "$@"
+      ;;
+    raw)
+      shift
+      exec "$(find_real_pi)" "$@"
+      ;;
+    help|--profile-help)
+      usage
+      ;;
+    "")
+      exec "$(find_real_pi)"
+      ;;
+    *)
+      if [[ -d "$(profile_dir "$command")" ]]; then
+        shift
+        run_profile "$command" "$@"
+      else
+        exec "$(find_real_pi)" "$@"
+      fi
+      ;;
+  esac
+}
+
+main "$@"
