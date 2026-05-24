@@ -1,0 +1,23 @@
+{
+  "settings": {
+    "toolPrefix": "none"
+  },
+  "mcpServers": {
+    "firecrawl": {
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp"],
+      "env": {
+        "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"
+      },
+      "lifecycle": "lazy",
+      "directTools": [
+        "firecrawl_scrape",
+        "firecrawl_search",
+        "firecrawl_map",
+        "firecrawl_crawl",
+        "firecrawl_check_crawl_status",
+        "firecrawl_extract"
+      ]
+    }
+  }
+}

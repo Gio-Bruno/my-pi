@@ -1,0 +1,18 @@
+{
+  "builtinTools": [
+    "read",
+    "write",
+    "edit",
+    "bash"
+  ],
+  "extensionTools": [
+    "mcp",
+    "firecrawl_scrape",
+    "firecrawl_search",
+    "firecrawl_map",
+    "firecrawl_crawl",
+    "firecrawl_check_crawl_status",
+    "firecrawl_extract"
+  ],
+  "extraArgs": []
+}
