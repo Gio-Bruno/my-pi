@@ -1,0 +1,43 @@
+{
+  "description": "Firecrawl MCP server with scrape/search/map/crawl/extract tools exposed directly.",
+  "sharedFiles": {
+    "extensions/pi-mcp-adapter.ts": "extensions/pi-mcp-adapter.ts"
+  },
+  "config": {
+    "extensionTools": [
+      "mcp",
+      "firecrawl_scrape",
+      "firecrawl_search",
+      "firecrawl_map",
+      "firecrawl_crawl",
+      "firecrawl_check_crawl_status",
+      "firecrawl_extract"
+    ]
+  },
+  "dependencies": {
+    "pi-mcp-adapter": "https://github.com/nicobailon/pi-mcp-adapter/archive/c28c3608e4dd0e7eaf92cc4306ea9875bc60e077.tar.gz"
+  },
+  "mcp": {
+    "settings": {
+      "toolPrefix": "none"
+    },
+    "mcpServers": {
+      "firecrawl": {
+        "command": "npx",
+        "args": ["-y", "firecrawl-mcp"],
+        "env": {
+          "FIRECRAWL_API_KEY": "${FIRECRAWL_API_KEY}"
+        },
+        "lifecycle": "lazy",
+        "directTools": [
+          "firecrawl_scrape",
+          "firecrawl_search",
+          "firecrawl_map",
+          "firecrawl_crawl",
+          "firecrawl_check_crawl_status",
+          "firecrawl_extract"
+        ]
+      }
+    }
+  }
+}

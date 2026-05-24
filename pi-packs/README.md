@@ -9,12 +9,14 @@ Create an agent from one or more packs:
 ```sh
 pi create my-mcp --tools "" --pack mcp-adapter
 pi create my-agent --pack mcp-adapter --pack team-prompts --pack review-skills
+pi create my-firecrawl --pack firecrawl
 ```
 
 Add one or more packs to an existing agent:
 
 ```sh
 pi apply-pack my-agent mcp-adapter team-prompts review-skills
+pi apply-pack my-agent firecrawl
 ```
 
 List packs:
@@ -65,3 +67,9 @@ Common destination folders:
 - `themes/` - copied theme JSON files are loaded by the wrapper
 
 When a pack adds package dependencies, the wrapper runs `npm install` in the target profile by default. Use `--no-install` to skip it.
+
+## Available packs
+
+- `mcp-adapter` - MCP adapter extension with only the gateway tool enabled.
+- `rtk` - RTK command rewriting/token-saving extension hook.
+- `firecrawl` - Firecrawl MCP server exposed as direct scrape/search/map/crawl/extract tools. Requires `FIRECRAWL_API_KEY` in the local environment.

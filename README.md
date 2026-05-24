@@ -47,12 +47,14 @@ Create agents by pulling resources from one or more packs:
 pi packs
 pi create my-mcp --tools "" --pack mcp-adapter
 pi create my-agent --pack mcp-adapter --pack team-prompts --pack review-skills
+pi create my-firecrawl --pack firecrawl
 ```
 
 Add packs to an existing agent:
 
 ```sh
 pi apply-pack existing-agent mcp-adapter team-prompts
+pi apply-pack existing-agent firecrawl
 ```
 
 Packs are copy/apply templates. Shared resources live in `pi-shared/`, but each
