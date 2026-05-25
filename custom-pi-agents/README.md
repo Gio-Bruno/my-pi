@@ -124,9 +124,13 @@ pi agent-path "$HOME/.my-pi-agents"
 When a profile runs, the wrapper sets:
 
 ```sh
+PI_AGENT_PROFILE_NAME="<agent-name>"
 PI_CODING_AGENT_DIR="<profile-dir>"
 PI_CODING_AGENT_SESSION_DIR="<profile-dir>/sessions"
 ```
+
+The wrapper also loads its built-in `agent-status` extension, which shows
+`agent:<agent-name>` in pi's footer/status area and sets the terminal title.
 
 It also runs Pi with:
 
@@ -136,6 +140,7 @@ It also runs Pi with:
 --no-prompt-templates --prompt-template "<profile-dir>/prompts"
 --no-themes --theme "<profile-dir>/themes"
 --no-extensions
+--extension "<wrapper-dir>/extensions/agent-status.ts"
 --extension "<profile-dir>/tools/<tool-name>.ts"
 --extension "<profile-dir>/extensions/<extension-name>.ts"
 --extension "<profile-dir>/extensions/<extension-dir>/index.ts"

@@ -49,7 +49,8 @@ make_fake_pi() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-printf 'PI_CODING_AGENT_DIR=%s\n' "${PI_CODING_AGENT_DIR:-}" >"$PI_FAKE_CAPTURE/env"
+printf 'PI_AGENT_PROFILE_NAME=%s\n' "${PI_AGENT_PROFILE_NAME:-}" >"$PI_FAKE_CAPTURE/env"
+printf 'PI_CODING_AGENT_DIR=%s\n' "${PI_CODING_AGENT_DIR:-}" >>"$PI_FAKE_CAPTURE/env"
 printf 'PI_CODING_AGENT_SESSION_DIR=%s\n' "${PI_CODING_AGENT_SESSION_DIR:-}" >>"$PI_FAKE_CAPTURE/env"
 for arg in "$@"; do
   printf '<%s>\n' "$arg" >>"$PI_FAKE_CAPTURE/args"
@@ -190,6 +191,7 @@ CONFIG
 
   "$PI_WRAPPER" researcher -p "inspect only"
 
+  assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_AGENT_PROFILE_NAME=researcher"
   assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_CODING_AGENT_DIR=$PI_AGENTS_HOME/researcher"
   assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_CODING_AGENT_SESSION_DIR=$PI_AGENTS_HOME/researcher/sessions"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--no-context-files>"
@@ -204,6 +206,7 @@ CONFIG
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/themes>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--no-extensions>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--extension>"
+  assert_file_contains "$PI_FAKE_CAPTURE/args" "<$ROOT_DIR/extensions/agent-status.ts>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/tools/mr_search.ts>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<$PI_AGENTS_HOME/researcher/extensions/session-log.ts>"
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<npm:@example/test-extension>"
@@ -248,6 +251,7 @@ test_agent_path_sets_profile_root_when_env_is_unset() {
 
   assert_file_contains /tmp/pi-wrapper-agent-path.out "Pi agent path: $custom_root"
   assert_dir "$custom_root/researcher"
+  assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_AGENT_PROFILE_NAME=researcher"
   assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_CODING_AGENT_DIR=$custom_root/researcher"
   assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_CODING_AGENT_SESSION_DIR=$custom_root/researcher/sessions"
 }
@@ -313,6 +317,7 @@ test_unknown_command_passes_through_to_real_pi() {
   "$PI_WRAPPER" --version
 
   assert_file_contains "$PI_FAKE_CAPTURE/args" "<--version>"
+  assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_AGENT_PROFILE_NAME="
   assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_CODING_AGENT_DIR="
   assert_file_contains "$PI_FAKE_CAPTURE/env" "PI_CODING_AGENT_SESSION_DIR="
 }

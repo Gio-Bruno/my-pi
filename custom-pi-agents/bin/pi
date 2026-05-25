@@ -6,6 +6,11 @@ DEFAULT_BUILTIN_TOOLS="read,write,edit,bash"
 WRAPPER_CONFIG_DIR="${PI_WRAPPER_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/custom-pi-agents}"
 AGENT_PATH_FILE="$WRAPPER_CONFIG_DIR/agent-path"
 WRAPPER_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+WRAPPER_EXTENSIONS_DIR="$WRAPPER_BIN_DIR/../extensions"
+if [[ -d "$WRAPPER_EXTENSIONS_DIR" ]]; then
+  WRAPPER_EXTENSIONS_DIR="$(cd "$WRAPPER_EXTENSIONS_DIR" && pwd -P)"
+fi
+AGENT_STATUS_EXTENSION="$WRAPPER_EXTENSIONS_DIR/agent-status.ts"
 DEFAULT_AGENT_PACKS_HOME="$(cd "$WRAPPER_BIN_DIR/../.." && pwd -P)/pi-packs"
 DEFAULT_SHARED_HOME="$(cd "$WRAPPER_BIN_DIR/../.." && pwd -P)/pi-shared"
 AGENT_PACKS_HOME="${PI_AGENT_PACKS_HOME:-$DEFAULT_AGENT_PACKS_HOME}"
@@ -935,6 +940,10 @@ run_profile() {
     --no-extensions
   )
 
+  if [[ -f "$AGENT_STATUS_EXTENSION" ]]; then
+    args+=(--extension "$AGENT_STATUS_EXTENSION")
+  fi
+
   local -a enabled_tools=()
   local enabled_tool
   local existing_tool
@@ -1043,6 +1052,7 @@ run_profile() {
   local real_pi
   real_pi="$(find_real_pi)"
 
+  PI_AGENT_PROFILE_NAME="$name" \
   PI_CODING_AGENT_DIR="$dir" \
   PI_CODING_AGENT_SESSION_DIR="$dir/sessions" \
   exec "$real_pi" "${args[@]}" "$@"

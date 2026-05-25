@@ -6,7 +6,7 @@ This repository is meant to be cloneable on any machine, including work/corporat
 
 ## Layout
 
-- `custom-pi-agents/` - `pi` wrapper that runs isolated named Pi profiles.
+- `custom-pi-agents/` - `pi` wrapper that runs isolated named Pi profiles and shows the active profile in the Pi footer/status area.
 - `my-pi-agents/` - portable Pi profile root used by the wrapper.
 - `pi-packs/` - reusable profile packs for composing new agents.
 - `pi-shared/` - shared source library that packs copy extensions, skills, prompts, themes, and config snippets from.
