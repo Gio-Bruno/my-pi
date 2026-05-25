@@ -1,4 +1,16 @@
 export { workflow, run } from "./workflow.js";
+export {
+  InvocationParseError,
+  parseInvocationText,
+  parseInvocationTokens,
+  tokenizeInvocation,
+  type InvocationValueType,
+  type ParsedInvocation,
+  type ParseInvocationOptions,
+  type WorkflowInvocationDescriptor,
+  type WorkflowInvocationOption,
+  type WorkflowInvocationPrimary,
+} from "./invocation.js";
 export { format, prompt, compact, schema, extractJson, STRUCTURED_TOOL_NAME } from "./formats.js";
 export { profile, inlineAgent, readOnlyAgent, codeSearchAgent, editAgent, isInlineProfile, resolveProfileRoot, loadProfile } from "./profiles.js";
 export { DefaultBudgetTracker, ScopedBudgetTracker, WorkflowBudgetExceededError } from "./budget.js";

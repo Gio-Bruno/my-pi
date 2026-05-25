@@ -1,0 +1,63 @@
+{
+  "slug": "brainstorming",
+  "name": "Brainstorming design",
+  "source": "https://github.com/obra/superpowers/blob/main/skills/brainstorming/SKILL.md",
+  "invocation": {
+    "primary": {
+      "field": "idea",
+      "aliases": ["input"],
+      "required": true,
+      "description": "The idea, change, feature, or behavior to brainstorm into a design/spec.",
+      "prompt": "What idea should we brainstorm into a design/spec?"
+    },
+    "options": {
+      "maxQuestions": {
+        "flag": "max-questions",
+        "aliases": ["questions"],
+        "type": "number",
+        "default": 6,
+        "description": "Maximum one-at-a-time clarifying questions."
+      },
+      "skipCommit": {
+        "flag": "skip-commit",
+        "type": "boolean",
+        "default": false,
+        "description": "Skip git add/commit for the written spec."
+      },
+      "specPath": {
+        "flag": "spec-path",
+        "type": "path",
+        "description": "Repository-relative spec path."
+      },
+      "visualCompanion": {
+        "flag": "visual-companion",
+        "type": "string",
+        "default": "auto",
+        "description": "auto, offer, or never."
+      },
+      "commitMessage": {
+        "flag": "commit-message",
+        "type": "string",
+        "description": "Optional commit message for the initial spec commit."
+      }
+    },
+    "examples": [
+      "/workflow brainstorming Design a better workflow invocation UX --max-questions 3 --skip-commit",
+      "/workflow brainstorming \"Design a better workflow invocation UX\" --spec-path docs/superpowers/specs/invocation.md"
+    ]
+  },
+  "files": [
+    "brainstorming.workflow.ts",
+    "brainstorming/prompts/context.md",
+    "brainstorming/prompts/scope.md",
+    "brainstorming/prompts/clarifying-question.md",
+    "brainstorming/prompts/approaches.md",
+    "brainstorming/prompts/design.md",
+    "brainstorming/prompts/spec-review.md",
+    "brainstorming/steps/input.ts",
+    "brainstorming/steps/project.ts",
+    "brainstorming/steps/prompts.ts",
+    "brainstorming/steps/spec.ts",
+    "brainstorming/schemas.ts"
+  ]
+}

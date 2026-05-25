@@ -12,6 +12,7 @@ plans/
 *.html
 wireframes/
 **/wireframes/
+docs/superpowers/
 
 # Environment and credentials
 .env

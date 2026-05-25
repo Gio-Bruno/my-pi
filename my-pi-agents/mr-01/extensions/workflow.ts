@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { InvocationParseError, tokenizeInvocation } from "../../../pi-workflows/src/invocation.js";
 
 const extensionDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(extensionDir, "..", "..", "..");
@@ -19,6 +20,15 @@ export default function workflowCommand(pi: ExtensionAPI) {
     description: "Run a pi-workflows workflow file, example, or generated workflow",
     handler: async (args, ctx) => {
       const parsed = parseWorkflowArgs(args);
+
+      if (parsed.error) {
+        pi.sendMessage({
+          customType: "workflow",
+          display: true,
+          content: `${parsed.error}\n\n${workflowHelp()}`,
+        });
+        return;
+      }
 
       if (!parsed.workflow) {
         pi.sendMessage({
@@ -45,7 +55,7 @@ export default function workflowCommand(pi: ExtensionAPI) {
 
       try {
         const cliArgs = ["run", "workflow", "--", workflowPath];
-        if (parsed.json) cliArgs.push("--json", parsed.json);
+        cliArgs.push(...parsed.invocationArgs);
 
         const result = await pi.exec("npm", cliArgs, {
           cwd: workflowsDir,
@@ -82,18 +92,40 @@ export default function workflowCommand(pi: ExtensionAPI) {
   });
 }
 
-function parseWorkflowArgs(args: string): { workflow?: string; json?: string } {
+function parseWorkflowArgs(args: string): { workflow?: string; invocationArgs: string[]; error?: string } {
   const trimmed = args.trim();
-  if (!trimmed) return {};
+  if (!trimmed) return { invocationArgs: [] };
 
-  const [workflow, ...restParts] = trimmed.split(/\s+/);
-  const rest = trimmed.slice(workflow.length).trim();
+  const workflowMatch = trimmed.match(/^(\S+)(?:\s+([\s\S]*))?$/);
+  const workflow = workflowMatch?.[1];
+  const rest = workflowMatch?.[2]?.trim() ?? "";
+  if (!workflow) return { invocationArgs: [] };
+  if (!rest) return { workflow, invocationArgs: [] };
 
-  if (!rest) return { workflow };
-  if (rest.startsWith("--json")) return { workflow, json: rest.replace(/^--json\s*/, "").trim() };
-  if (rest.startsWith("{") || rest.startsWith("[")) return { workflow, json: rest };
+  try {
+    if (rest.startsWith("--json")) {
+      const json = rest.replace(/^--json(?:\s+|=)?/, "").trim();
+      if (!json) return { workflow, invocationArgs: [], error: "--json requires a JSON value." };
+      return { workflow, invocationArgs: ["--json", stripOuterQuotes(json)] };
+    }
 
-  return { workflow, json: JSON.stringify({ input: restParts.join(" ") }) };
+    if (rest.startsWith("{") || rest.startsWith("[")) {
+      return { workflow, invocationArgs: ["--json", rest] };
+    }
+
+    return { workflow, invocationArgs: tokenizeInvocation(rest) };
+  } catch (error) {
+    const message = error instanceof InvocationParseError || error instanceof Error ? error.message : String(error);
+    return { workflow, invocationArgs: [], error: message };
+  }
+}
+
+function stripOuterQuotes(value: string): string {
+  const quote = value[0];
+  if ((quote === "'" || quote === '"') && value[value.length - 1] === quote) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 function resolveWorkflowPath(nameOrPath: string): { match?: WorkflowMatch; error?: string } {
@@ -143,9 +175,15 @@ function workflowHelp(): string {
     "Usage:",
     "  /workflow                         # list workflows",
     "  /workflow smoke                   # no-LLM smoke test",
+    "  /workflow brainstorming Design a clearer workflow UX --max-questions 3 --skip-commit",
     "  /workflow codebase-question {\"question\":\"Where is the workflow command registered?\"}",
     "  /workflow <generated-slug> {\"key\":\"value\"}",
     "  /workflow path/to/custom.workflow.ts --json {\"key\":\"value\"}",
+    "",
+    "Inline args:",
+    "  Free text becomes the workflow's primary input when metadata is available, or input otherwise.",
+    "  Metadata-aware workflows can use flags such as --name value, --name=value, --bool, and --no-bool.",
+    "  Use -- before literal text that starts with --.",
     "",
     "Available example workflows:",
     ...(examples.length ? examples.map((name) => `  - ${name}`) : ["  (none found)"]),

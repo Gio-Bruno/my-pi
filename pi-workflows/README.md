@@ -25,8 +25,16 @@ npm run example:fix-tests -- --json '{"maxLoops":2}'
 CLI options:
 
 ```sh
-pi-workflow <workflow.ts> [--json '{"key":"value"}'] [--cwd path] [--profile-root path]
+pi-workflow <workflow.ts> [inline input and flags] [--json '{"key":"value"}'] [--cwd path] [--profile-root path]
 ```
+
+Metadata-aware generated workflows can be invoked without JSON by passing free text and shell-style flags:
+
+```sh
+npm run workflow -- workflows/brainstorming.workflow.ts Design a better invocation UX --max-questions 3 --skip-commit
+```
+
+JSON invocation remains supported for structured or complex inputs.
 
 ## Generated workflow bundles
 
